@@ -20,8 +20,11 @@ type ShipType =
 /// Global player index
 [<Measure>] type GPI
 
-/// Local player index
-[<Measure>] type LPI
+/// Global bullet index
+[<Measure>] type GBI
+
+/// Global supply index
+[<Measure>] type GSI
 
 /// Globally unique id of bullets
 [<Measure>] type BulletGuid
@@ -51,51 +54,48 @@ type Description =
 
 /// Data that changes every frame.
 type State =
-    { heading : Vector3[];
-      right : Vector3[];
+    { // *** Ships ***
+      heading : MarkedArray<GPI, Vector3>;
+      right : MarkedArray<GPI, Vector3>;
       /// Position we had computed last time we received a position for the player's host.
-      posClient : Vector3[];
+      posClient : MarkedArray<GPI, Vector3>;
       /// Position where players here see this ship. Interpolated between posClient and posHost.
-      posVisible : Vector3[];
+      posVisible : MarkedArray<GPI, Vector3>;
       /// Last known position from the host of the player.
-      posHost : Vector3[];
+      posHost : MarkedArray<GPI, Vector3>;
       /// Time of last known position received from the host of the player.
-      posHostTime : int<dms>[];
+      posHostTime : MarkedArray<GPI, int<dms>>;
       /// [0, 1], used to compute posVisible.
-      posLerpT : float32[];
-      speed : Vector3[];
-      accel : Vector3[];
-      health : float32<Health>[];
-      numFastBullets : int[];
-      numBigBullets : int[];
-      numMultiFire : int[];
-      numHighRate : int[];
-      timeBeforeFire : int<dms>[];
-      /// NaN means "not dead".
-      timeBeforeRespawn : int<dms>[];
-      score : float32<Points>[];
+      posLerpT : MarkedArray<GPI, float32>;
+      speed : MarkedArray<GPI, Vector3>;
+      accel : MarkedArray<GPI, Vector3>;
+      health : MarkedArray<GPI, float32<Health>>;
+      numFastBullets : MarkedArray<GPI, int>;
+      numBigBullets : MarkedArray<GPI, int>;
+      numMultiFire : MarkedArray<GPI, int>;
+      numHighRate : MarkedArray<GPI, int>;
+      timeBeforeFire : MarkedArray<GPI, int<dms>>;
+      /// -1 means "not dead".
+      timeBeforeRespawn : MarkedArray<GPI, int<dms>>;
+      score : MarkedArray<GPI, float32<Points>>;
+
+      // *** Bullets ***
       bulletGuid : int<BulletGuid>[];
-      bulletPos : Vector3[];
-      bulletTimeLeft : int<dms>[];
-      bulletSpeed : Vector3[];
-      bulletRadius : float32<m>[];
-      bulletOwner : int<GPI>[];
-      supplyPos : Vector3[];
-      supplyType : SupplyType[];
-      supplyRadius : float32<m>[];
+      bulletPos : MarkedArray<GBI, Vector3>;
+      bulletTimeLeft : MarkedArray<GBI, int<dms>>;
+      bulletSpeed : MarkedArray<GBI, Vector3>;
+      bulletRadius : MarkedArray<GBI, float32<m>>;
+      bulletOwner : MarkedArray<GBI, int<GPI>>;
+      
+      // *** Supplies ***
+      supplyPos : MarkedArray<GSI, Vector3>;
+      supplyType : MarkedArray<GSI, SupplyType>;
+      supplyRadius : MarkedArray<GSI, float32<m>>;
+      
+      // *** Other ***
       time : int<dms>;
     }
 
-/// Synchronization message types sent over the network
-type GameEvent =
-    | ShipSuicided of int<GPI> // dead ship id
-    | ShipKilled of int<GPI> * int<BulletGuid> // killed ship id, bullet guid
-    | NewBullet of int * Vector3 * Vector3 * float32<m> // bullet guid, position, speed, radius
-    | BulletRetired of int<BulletGuid> // bullet guid
-    | PlayerLeft of int<GPI> // Player idx
-    | PlayerJoined of int<GPI> * string // Player idx, player name
-    | Impulse of int<GPI> * Vector3 // Player idx, impulse vector
-    | Damage of int<GPI> * float32<Health> // Player idx, damage amount
 
 (*
 let update checkCollisionsWithAsteroids checkCollisionsWithBullets checkCollisionsBetweenShips checkCollisionsWithSupplies computeCollisionImpulses computeDamages applySupplies (description : Description) (state : State) =
