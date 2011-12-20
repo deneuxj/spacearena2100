@@ -18,7 +18,7 @@
     <Optimize>false</Optimize>
     <Tailcalls>false</Tailcalls>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;SAFE_PRIMITIVE_TYPES</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>bin\Debug\MainGame.XML</DocumentationFile>
   </PropertyGroup>
@@ -45,9 +45,11 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Units.fs" />
     <Compile Include="WarpCoord.fs" />
     <Compile Include="TrajectoryCollision.fs" />
     <Compile Include="GameState.fs" />
+    <Compile Include="GameStateUpdate.fs" />
     <None Include="Script.fsx" />
   </ItemGroup>
   <ItemGroup>

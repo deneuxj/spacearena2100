@@ -2,6 +2,7 @@
 
 open Microsoft.Xna.Framework
 open CleverRake.XnaUtils
+open Units
 
 /// Kinds of re-supplies.
 type SupplyType =
@@ -16,23 +17,35 @@ type ShipType =
     | Hawk
     | Sphere
 
+/// Global player index
+[<Measure>] type GPI
+
+/// Local player index
+[<Measure>] type LPI
+
+/// Globally unique id of bullets
+[<Measure>] type BulletGuid
+
+/// Angles, radians
+[<Measure>] type rad
+
 /// Data that does not change often during a round.
 type Description =
     { numPlayers : int;
       myHostId : int;
-      areaSize : float32;
+      areaSize : float32<m>;
       playerNames : string[];
-      localPlayersIdxs : int list;
-      localAiPlayerIdxs : int list;
-      remotePlayerIdxs : int list;
+      localPlayersIdxs : int<GPI> list;
+      localAiPlayerIdxs : int<GPI> list;
+      remotePlayerIdxs : int<GPI> list;
       shipTypes : ShipType[];
       bulletIsLocal : bool list;
       /// Players who left the game early.
-      gonePlayerIdxs : int list;
+      gonePlayerIdxs : int<GPI> list;
       asteroidPos : Vector3[];
-      asteroidRadius : float32[];
-      asteroidRotX : float32[];
-      asteroidRotY : float32[];
+      asteroidRadius : float32<m>[];
+      asteroidRotX : float32<rad>[];
+      asteroidRotY : float32<rad>[];
       asteroidOctree : Octree.Node<int>;
     }
 
@@ -47,45 +60,44 @@ type State =
       /// Last known position from the host of the player.
       posHost : Vector3[];
       /// Time of last known position received from the host of the player.
-      posHostTime : int[];
+      posHostTime : int<dms>[];
       /// [0, 1], used to compute posVisible.
       posLerpT : float32[];
       speed : Vector3[];
-      health : float32[];
+      accel : Vector3[];
+      health : float32<Health>[];
       numFastBullets : int[];
       numBigBullets : int[];
       numMultiFire : int[];
       numHighRate : int[];
-      timeBeforeFire : int[];
+      timeBeforeFire : int<dms>[];
       /// NaN means "not dead".
-      timeBeforeRespawn : int[];
-      score : float32[];
-      bulletGuid : int[];
+      timeBeforeRespawn : int<dms>[];
+      score : float32<Points>[];
+      bulletGuid : int<BulletGuid>[];
       bulletPos : Vector3[];
-      bulletTimeLeft : int[];
+      bulletTimeLeft : int<dms>[];
       bulletSpeed : Vector3[];
-      bulletRadius : float32[];
-      bulletOwner : int[];
-      supplyPos : float32[];
+      bulletRadius : float32<m>[];
+      bulletOwner : int<GPI>[];
+      supplyPos : Vector3[];
       supplyType : SupplyType[];
-      supplyRadius : float32[];
-      time : int;
+      supplyRadius : float32<m>[];
+      time : int<dms>;
     }
 
+/// Synchronization message types sent over the network
 type GameEvent =
-    | ShipSuicided of int // dead ship id
-    | ShipKilled of int * int // killed ship id, bullet guid
-    | NewBullet of int * Vector3 * Vector3 * float32 // bullet guid, position, speed, radius
-    | BulletRetired of int // bullet guid
-    | PlayerLeft of int // Player idx
-    | PlayerJoined of int * string // Player idx, player name
-    | Impulse of int * Vector3 // Player idx, impulse vector
-    | Damage of int * float32 // Player idx, damage amount
+    | ShipSuicided of int<GPI> // dead ship id
+    | ShipKilled of int<GPI> * int<BulletGuid> // killed ship id, bullet guid
+    | NewBullet of int * Vector3 * Vector3 * float32<m> // bullet guid, position, speed, radius
+    | BulletRetired of int<BulletGuid> // bullet guid
+    | PlayerLeft of int<GPI> // Player idx
+    | PlayerJoined of int<GPI> * string // Player idx, player name
+    | Impulse of int<GPI> * Vector3 // Player idx, impulse vector
+    | Damage of int<GPI> * float32<Health> // Player idx, damage amount
 
-type ShipCollision =
-    { other : int
-      ship : int }
-
+(*
 let update checkCollisionsWithAsteroids checkCollisionsWithBullets checkCollisionsBetweenShips checkCollisionsWithSupplies computeCollisionImpulses computeDamages applySupplies (description : Description) (state : State) =
     let myPlayers = 
         description.localPlayersIdxs
@@ -118,7 +130,7 @@ let update checkCollisionsWithAsteroids checkCollisionsWithBullets checkCollisio
 
     let collisionsWithSupplies : ShipCollision list = checkCollisionsWithSupplies myPlayerPos myPlayerSpeeds myPlayerShipTypes state.supplyPos state.supplyType
 
-    failwith "TODO"
+    failwith "TODO" *)
 (* Update cycle:
  * Check collisions
  * Compute collision impulses

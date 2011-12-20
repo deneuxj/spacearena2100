@@ -13,6 +13,12 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "CoopMultiTasking", "..\xnau
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "XNAUtils", "..\xnautils\XNAUtils\XNAUtils.fsproj", "{EBFAB7EB-FF0B-4DE3-842B-BAB06DCD3D42}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{47255CCE-10F5-4CAB-A88E-5978D2AADAEB}"
+	ProjectSection(SolutionItems) = preProject
+		docs\Space arena screens.graphml = docs\Space arena screens.graphml
+		docs\Space arena state update.graphml = docs\Space arena state update.graphml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

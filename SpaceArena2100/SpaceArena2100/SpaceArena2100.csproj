@@ -104,8 +104,9 @@
       <Name>MainGame</Name>
     </ProjectReference>
     <ProjectReference Include="..\SpaceArena2100Content\SpaceArena2100Content.contentproj">
-      <Name>SpaceArena2100Content</Name>
+      <Name>SpaceArena2100Content %28Content%29</Name>
       <XnaReferenceType>Content</XnaReferenceType>
+      <Project>{3B9F59D8-FBFC-4B44-A7CD-F8959FE25FEF}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
