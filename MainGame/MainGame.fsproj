@@ -45,6 +45,8 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="WarpCoord.fs" />
+    <Compile Include="TrajectoryCollision.fs" />
     <Compile Include="GameState.fs" />
     <None Include="Script.fsx" />
   </ItemGroup>

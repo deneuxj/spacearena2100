@@ -99,6 +99,10 @@
     <Content Include="GameThumbnail.png" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\MainGame\MainGame.fsproj">
+      <Project>{3BC4F808-6B48-407B-9453-ED16390BEE73}</Project>
+      <Name>MainGame</Name>
+    </ProjectReference>
     <ProjectReference Include="..\SpaceArena2100Content\SpaceArena2100Content.contentproj">
       <Name>SpaceArena2100Content</Name>
       <XnaReferenceType>Content</XnaReferenceType>
