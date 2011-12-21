@@ -81,9 +81,9 @@ type State =
 
       // *** Bullets ***
       bulletGuid : int<BulletGuid>[];
-      bulletPos : MarkedArray<GBI, Vector3>;
+      bulletPos : MarkedArray<GBI, TypedVector3<m>>;
       bulletTimeLeft : MarkedArray<GBI, int<dms>>;
-      bulletSpeed : MarkedArray<GBI, Vector3>;
+      bulletSpeed : MarkedArray<GBI, TypedVector3<m>>;
       bulletRadius : MarkedArray<GBI, float32<m>>;
       bulletOwner : MarkedArray<GBI, int<GPI>>;
       
