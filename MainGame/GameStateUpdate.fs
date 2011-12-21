@@ -8,7 +8,7 @@ open GameState
 
 /// Synchronization message types sent over the network
 type RemoteEvent =
-    | DamageAndImpulse of int<GPI> * float32<Health> * Vector3 // Ship idx, damage, impulse
+    | DamageAndImpulse of int<GPI> * float32<Health> * TypedVector3<m/s> // Ship idx, damage, impulse
     | BulletDestroyed of int<BulletGuid> // Bullet GUID
     | ShipState of int<GPI> * Vector3 * Vector3 * Vector3 * Vector3 * Vector3 // Ship idx, position, heading, right, speed, thrust
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
@@ -20,6 +20,7 @@ type TimedRemoteEvent =
     { time : int<dms>;
       event : RemoteEvent }
 
+/// Add bullets created remotely
 let createBullets now bulletGuids bulletOwners bulletRadii bulletPos bulletSpeeds events =
     let events =
         events
@@ -50,3 +51,11 @@ let createBullets now bulletGuids bulletOwners bulletRadii bulletPos bulletSpeed
     Array.append bulletOwners newOwners,
     Array.append bulletRadii newRadii,
     Array.append bulletSpeeds newSpeeds
+
+let applyDamageAndImpulse speeds health events =
+    for e in events do
+        match e with
+        | { event = DamageAndImpulse (idx, damage, impulse) } ->
+            MarkedArray.mutate ((+) impulse) (speeds, idx)
+            MarkedArray.mutate (fun x -> x - damage) (health, idx)
+        | _ -> ()
