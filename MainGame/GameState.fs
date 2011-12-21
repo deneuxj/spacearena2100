@@ -16,9 +16,16 @@ type ShipType =
     | Bull
     | Hawk
     | Sphere
+with
+    member this.BoundingSphereRadius =
+        match this with
+        | _ -> 3.0f<m>
 
 /// Global player index
 [<Measure>] type GPI
+
+/// Asteroid index
+[<Measure>] type AstIdx
 
 /// Global supply index
 [<Measure>] type GSI
@@ -30,11 +37,11 @@ type ShipType =
 [<Measure>] type rad
 
 type Asteroids =
-    { pos : Vector3[];
-      radius : float32<m>[];
-      rotX : float32<rad>[];
-      rotY : float32<rad>[];
-      octree : Octree.Node<int> }
+    { pos : MarkedArray<AstIdx, TypedVector3<m>>;
+      radius : MarkedArray<AstIdx, float32<m>>;
+      rotX : MarkedArray<AstIdx, float32<rad>>;
+      rotY : MarkedArray<AstIdx, float32<rad>>;
+      octree : Octree.Node<int<AstIdx>> }
     
 /// Data that does not change often during a round.
 type Description =
@@ -52,20 +59,20 @@ type Description =
     }
 
 type Ships =
-    { heading : MarkedArray<GPI, Vector3>;
-      right : MarkedArray<GPI, Vector3>;
+    { headings : MarkedArray<GPI, TypedVector3<m>>;
+      rights : MarkedArray<GPI, TypedVector3<m>>;
       /// Position we had computed last time we received a position for the player's host.
-      posClient : MarkedArray<GPI, Vector3>;
+      posClient : MarkedArray<GPI, TypedVector3<m>>;
       /// Position where players here see this ship. Interpolated between posClient and posHost.
-      posVisible : MarkedArray<GPI, Vector3>;
+      posVisible : MarkedArray<GPI, TypedVector3<m>>;
       /// Last known position from the host of the player.
-      posHost : MarkedArray<GPI, Vector3>;
+      posHost : MarkedArray<GPI, TypedVector3<m>>;
       /// Time of last known position received from the host of the player.
       posHostTime : MarkedArray<GPI, int<dms>>;
       /// [0, 1], used to compute posVisible.
       posLerpT : MarkedArray<GPI, float32>;
-      speed : MarkedArray<GPI, Vector3>;
-      accel : MarkedArray<GPI, Vector3>;
+      speeds : MarkedArray<GPI, TypedVector3<m/s>>;
+      accels : MarkedArray<GPI, TypedVector3<m/s^2>>;
       health : MarkedArray<GPI, float32<Health>>;
       numFastBullets : MarkedArray<GPI, int>;
       numBigBullets : MarkedArray<GPI, int>;
@@ -74,7 +81,7 @@ type Ships =
       timeBeforeFire : MarkedArray<GPI, int<dms>>;
       /// -1 means "not dead".
       timeBeforeRespawn : MarkedArray<GPI, int<dms>>;
-      score : MarkedArray<GPI, float32<Points>> }
+      scores : MarkedArray<GPI, float32<Points>> }
 
 type Bullets =
     { guids : int<BulletGuid>[];

@@ -105,6 +105,7 @@ let destroyBullets bullets events =
       timeLeft = newTimeLeft;
       pos = newPos }
 
+/// Merge two bullet groups
 let appendBullets bullets1 bullets2 =
     { guids = Array.append bullets1.guids bullets2.guids;
       owners = Array.append bullets1.owners bullets2.owners;
@@ -112,3 +113,50 @@ let appendBullets bullets1 bullets2 =
       speeds = Array.append bullets1.speeds bullets2.speeds;
       timeLeft = Array.append bullets1.timeLeft bullets2.timeLeft;
       pos = Array.append bullets1.pos bullets2.pos }
+
+/// Get a list of ship indices and asteroid indices corresponding to ships colliding with asteroids.
+/// Only deals with local ships.
+let computeCrashes dt (asteroids : Asteroids) (ships : Ships) localShips shipTypes =
+    let getIntersection (sphere : BoundingSphere) =
+        let intersected = ref None
+        Octree.checkIntersection
+            (fun (bbox : BoundingBox) -> bbox.Intersects(sphere))
+            (fun idxAsteroid ->
+                let astSphere = new BoundingSphere(asteroids.pos.[idxAsteroid].v, float32 asteroids.radius.[idxAsteroid])
+                if astSphere.Intersects(sphere) then
+                    intersected := Some idxAsteroid
+                    true
+                else
+                    false)
+            asteroids.octree
+        |> ignore
+
+        !intersected
+
+    let result = new System.Collections.Generic.List<_>()
+    for shipIdx in localShips do
+        let speed = ships.speeds.[shipIdx]
+        let pos = ships.posClient.[shipIdx]
+        let course = Speed3.op_Multiply(dt, speed)
+        let courseLength = course.v.Length() * 1.0f<m>
+        let shipType : ShipType = MarkedArray.get shipTypes shipIdx
+        let radius = shipType.BoundingSphereRadius
+        assert (radius > 0.0f<m>)
+        if courseLength > radius then
+            let courseUnit = course.v / float32 courseLength
+            let mutable offset = 0.0f<m>
+            let mutable found = false
+            while not found && offset <= courseLength do
+                let sphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit, float32 radius)
+                match getIntersection sphere with
+                | Some idxAsteroid -> result.Add((shipIdx, idxAsteroid)); found <- true
+                | None -> ()
+                offset <- offset + radius
+        else
+            let sphere = new BoundingSphere(pos.v, float32 radius)
+            match getIntersection sphere with
+            | Some idxAsteroid -> result.Add((shipIdx, idxAsteroid));
+            | None -> ()
+
+    result
+    |> Seq.toList
