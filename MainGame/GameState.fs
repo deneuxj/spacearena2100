@@ -32,6 +32,13 @@ type ShipType =
 /// Angles, radians
 [<Measure>] type rad
 
+type Asteroids =
+    { pos : Vector3[];
+      radius : float32<m>[];
+      rotX : float32<rad>[];
+      rotY : float32<rad>[];
+      octree : Octree.Node<int> }
+    
 /// Data that does not change often during a round.
 type Description =
     { numPlayers : int;
@@ -42,20 +49,13 @@ type Description =
       localAiPlayerIdxs : int<GPI> list;
       remotePlayerIdxs : int<GPI> list;
       shipTypes : ShipType[];
-      bulletIsLocal : bool list;
       /// Players who left the game early.
       gonePlayerIdxs : int<GPI> list;
-      asteroidPos : Vector3[];
-      asteroidRadius : float32<m>[];
-      asteroidRotX : float32<rad>[];
-      asteroidRotY : float32<rad>[];
-      asteroidOctree : Octree.Node<int>;
+      asteroids : Asteroids;
     }
 
-/// Data that changes every frame.
-type State =
-    { // *** Ships ***
-      heading : MarkedArray<GPI, Vector3>;
+type Ships =
+    { heading : MarkedArray<GPI, Vector3>;
       right : MarkedArray<GPI, Vector3>;
       /// Position we had computed last time we received a position for the player's host.
       posClient : MarkedArray<GPI, Vector3>;
@@ -77,22 +77,26 @@ type State =
       timeBeforeFire : MarkedArray<GPI, int<dms>>;
       /// -1 means "not dead".
       timeBeforeRespawn : MarkedArray<GPI, int<dms>>;
-      score : MarkedArray<GPI, float32<Points>>;
+      score : MarkedArray<GPI, float32<Points>> }
 
-      // *** Bullets ***
-      bulletGuid : int<BulletGuid>[];
-      bulletPos : MarkedArray<GBI, TypedVector3<m>>;
-      bulletTimeLeft : MarkedArray<GBI, int<dms>>;
-      bulletSpeed : MarkedArray<GBI, TypedVector3<m>>;
-      bulletRadius : MarkedArray<GBI, float32<m>>;
-      bulletOwner : MarkedArray<GBI, int<GPI>>;
-      
-      // *** Supplies ***
-      supplyPos : MarkedArray<GSI, Vector3>;
-      supplyType : MarkedArray<GSI, SupplyType>;
-      supplyRadius : MarkedArray<GSI, float32<m>>;
-      
-      // *** Other ***
+type Bullets =
+    { guids : MarkedArray<GBI, int<BulletGuid>>;
+      pos : MarkedArray<GBI, TypedVector3<m>>;
+      timeLeft : MarkedArray<GBI, int<dms>>;
+      speeds : MarkedArray<GBI, TypedVector3<m/s>>;
+      radii : MarkedArray<GBI, float32<m>>;
+      owners : MarkedArray<GBI, int<GPI>> }
+
+type Supplies =
+    { pos : MarkedArray<GSI, Vector3>;
+      types : MarkedArray<GSI, SupplyType>;
+      radii : MarkedArray<GSI, float32<m>> }
+
+/// Data that changes every frame.
+type State =
+    { ships : Ships;
+      bullets : Bullets;
+      supplies : Supplies;      
       time : int<dms>;
     }
 

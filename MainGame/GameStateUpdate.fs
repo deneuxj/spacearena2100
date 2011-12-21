@@ -20,8 +20,8 @@ type TimedRemoteEvent =
     { time : int<dms>;
       event : RemoteEvent }
 
-/// Add entries to arrays describing bullets according to BulletFired events
-let createBullets now bulletGuids bulletOwners bulletRadii bulletPos bulletSpeeds events =
+/// Create new bullets according to BulletFired events
+let createBullets now (bullets : Bullets) events =
     let events =
         events
         |> Array.filter (function { event = BulletFired _ } -> true | _ -> false)
@@ -47,10 +47,16 @@ let createBullets now bulletGuids bulletOwners bulletRadii bulletPos bulletSpeed
         events
         |> Array.map (function { event = BulletFired(_, _, _, _, speed) } -> speed | _ -> failwith "Unreachable")
 
-    Array.append bulletGuids newGuids,
-    Array.append bulletOwners newOwners,
-    Array.append bulletRadii newRadii,
-    Array.append bulletSpeeds newSpeeds
+    let newTimeLeft =
+        events
+        |> Array.map (function { time = t0 } -> now - t0)
+
+    { guids = Array.append bullets.guids.Content newGuids |> MarkedArray;
+      owners = Array.append bullets.owners.Content newOwners |> MarkedArray;
+      radii = Array.append bullets.radii.Content newRadii |> MarkedArray;
+      speeds = Array.append bullets.speeds.Content newSpeeds |> MarkedArray;
+      timeLeft = Array.append bullets.timeLeft.Content newTimeLeft |> MarkedArray;
+      pos = Array.append bullets.pos.Content newPos |> MarkedArray }
 
 /// Mutate speed and array events as requested by DamageAndImpulse entries in a list of events.
 let applyDamageAndImpulse speeds health events =
@@ -61,27 +67,40 @@ let applyDamageAndImpulse speeds health events =
             MarkedArray.mutate (fun x -> x - damage) (health, idx)
         | _ -> ()
 
-/// Remove entries from arrays describing bullets as requested by BulletDestroyed entries in a list of events.
-let destroyBullets bulletGuids bulletOwners bulletRadii bulletSpeeds events =
+/// Remove bullets as requested by BulletDestroyed events.
+let destroyBullets bullets events =
     let guidsToRetire =
         events
         |> Array.choose(function { event = BulletDestroyed guid } -> Some guid | _ -> None)
         |> Set.ofArray
 
     let newOwners =
-        bulletOwners
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bulletGuids
+        bullets.owners.Content
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
 
     let newRadii =
-        bulletRadii
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bulletGuids
+        bullets.radii.Content
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
 
     let newSpeeds =
-        bulletSpeeds
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bulletGuids
+        bullets.speeds.Content
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
 
     let newGuids =
-        bulletGuids
+        bullets.guids.Content
         |> Array.filter (guidsToRetire.Contains >> not)
 
-    newGuids, newOwners, newRadii, newSpeeds
+    let newTimeLeft =
+        bullets.timeLeft.Content
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+
+    let newPos =
+        bullets.pos.Content
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+
+    { guids = MarkedArray newGuids;
+      owners = MarkedArray newOwners;
+      radii = MarkedArray newRadii;
+      speeds = MarkedArray newSpeeds;
+      timeLeft = MarkedArray newTimeLeft;
+      pos = MarkedArray newPos }
