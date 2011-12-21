@@ -20,9 +20,6 @@ type ShipType =
 /// Global player index
 [<Measure>] type GPI
 
-/// Global bullet index
-[<Measure>] type GBI
-
 /// Global supply index
 [<Measure>] type GSI
 
@@ -80,12 +77,12 @@ type Ships =
       score : MarkedArray<GPI, float32<Points>> }
 
 type Bullets =
-    { guids : MarkedArray<GBI, int<BulletGuid>>;
-      pos : MarkedArray<GBI, TypedVector3<m>>;
-      timeLeft : MarkedArray<GBI, int<dms>>;
-      speeds : MarkedArray<GBI, TypedVector3<m/s>>;
-      radii : MarkedArray<GBI, float32<m>>;
-      owners : MarkedArray<GBI, int<GPI>> }
+    { guids : int<BulletGuid>[];
+      pos : TypedVector3<m>[];
+      timeLeft : int<dms>[];
+      speeds : TypedVector3<m/s>[];
+      radii : float32<m>[];
+      owners : int<GPI>[] }
 
 type Supplies =
     { pos : MarkedArray<GSI, Vector3>;

@@ -51,12 +51,12 @@ let createBullets now (bullets : Bullets) events =
         events
         |> Array.map (function { time = t0 } -> now - t0)
 
-    { guids = Array.append bullets.guids.Content newGuids |> MarkedArray;
-      owners = Array.append bullets.owners.Content newOwners |> MarkedArray;
-      radii = Array.append bullets.radii.Content newRadii |> MarkedArray;
-      speeds = Array.append bullets.speeds.Content newSpeeds |> MarkedArray;
-      timeLeft = Array.append bullets.timeLeft.Content newTimeLeft |> MarkedArray;
-      pos = Array.append bullets.pos.Content newPos |> MarkedArray }
+    { guids = Array.append bullets.guids newGuids;
+      owners = Array.append bullets.owners newOwners;
+      radii = Array.append bullets.radii newRadii;
+      speeds = Array.append bullets.speeds newSpeeds;
+      timeLeft = Array.append bullets.timeLeft newTimeLeft;
+      pos = Array.append bullets.pos newPos }
 
 /// Mutate speed and array events as requested by DamageAndImpulse entries in a list of events.
 let applyDamageAndImpulse speeds health events =
@@ -75,32 +75,32 @@ let destroyBullets bullets events =
         |> Set.ofArray
 
     let newOwners =
-        bullets.owners.Content
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+        bullets.owners
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids
 
     let newRadii =
-        bullets.radii.Content
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+        bullets.radii
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids
 
     let newSpeeds =
-        bullets.speeds.Content
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+        bullets.speeds
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids
 
     let newGuids =
-        bullets.guids.Content
+        bullets.guids
         |> Array.filter (guidsToRetire.Contains >> not)
 
     let newTimeLeft =
-        bullets.timeLeft.Content
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+        bullets.timeLeft
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids
 
     let newPos =
-        bullets.pos.Content
-        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids.Content
+        bullets.pos
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bullets.guids
 
-    { guids = MarkedArray newGuids;
-      owners = MarkedArray newOwners;
-      radii = MarkedArray newRadii;
-      speeds = MarkedArray newSpeeds;
-      timeLeft = MarkedArray newTimeLeft;
-      pos = MarkedArray newPos }
+    { guids = newGuids;
+      owners = newOwners;
+      radii = newRadii;
+      speeds = newSpeeds;
+      timeLeft = newTimeLeft;
+      pos = newPos }
