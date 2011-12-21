@@ -20,7 +20,7 @@ type TimedRemoteEvent =
     { time : int<dms>;
       event : RemoteEvent }
 
-/// Add bullets created remotely
+/// Add entries to arrays describing bullets according to BulletFired events
 let createBullets now bulletGuids bulletOwners bulletRadii bulletPos bulletSpeeds events =
     let events =
         events
@@ -52,6 +52,7 @@ let createBullets now bulletGuids bulletOwners bulletRadii bulletPos bulletSpeed
     Array.append bulletRadii newRadii,
     Array.append bulletSpeeds newSpeeds
 
+/// Mutate speed and array events as requested by DamageAndImpulse entries in a list of events.
 let applyDamageAndImpulse speeds health events =
     for e in events do
         match e with
@@ -59,3 +60,28 @@ let applyDamageAndImpulse speeds health events =
             MarkedArray.mutate ((+) impulse) (speeds, idx)
             MarkedArray.mutate (fun x -> x - damage) (health, idx)
         | _ -> ()
+
+/// Remove entries from arrays describing bullets as requested by BulletDestroyed entries in a list of events.
+let destroyBullets bulletGuids bulletOwners bulletRadii bulletSpeeds events =
+    let guidsToRetire =
+        events
+        |> Array.choose(function { event = BulletDestroyed guid } -> Some guid | _ -> None)
+        |> Set.ofArray
+
+    let newOwners =
+        bulletOwners
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bulletGuids
+
+    let newRadii =
+        bulletRadii
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bulletGuids
+
+    let newSpeeds =
+        bulletSpeeds
+        |> ArrayInlined.filterRef (guidsToRetire.Contains >> not) bulletGuids
+
+    let newGuids =
+        bulletGuids
+        |> Array.filter (guidsToRetire.Contains >> not)
+
+    newGuids, newOwners, newRadii, newSpeeds
