@@ -104,3 +104,11 @@ let destroyBullets bullets events =
       speeds = newSpeeds;
       timeLeft = newTimeLeft;
       pos = newPos }
+
+let appendBullets bullets1 bullets2 =
+    { guids = Array.append bullets1.guids bullets2.guids;
+      owners = Array.append bullets1.owners bullets2.owners;
+      radii = Array.append bullets1.radii bullets2.radii;
+      speeds = Array.append bullets1.speeds bullets2.speeds;
+      timeLeft = Array.append bullets1.timeLeft bullets2.timeLeft;
+      pos = Array.append bullets1.pos bullets2.pos }
