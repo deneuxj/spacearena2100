@@ -20,6 +20,15 @@ with
     member this.BoundingSphereRadius =
         match this with
         | _ -> 3.0f<m>
+    
+    member this.Fragility =
+        match this with
+        | _ -> 1.0f<Health/(m/s)>
+
+    member this.CollisionRestitution = 0.1f
+
+    member this.InversedMass =
+        1.0f / 1000.0f<kg> 
 
 /// Global player index
 [<Measure>] type GPI

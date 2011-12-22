@@ -256,3 +256,17 @@ let computeImpulse response pos1 speed1 massInv1 pos2 speed2 massInv2 =
     let imp2 = s * massInv2 * n
     
     imp1, imp2
+
+/// Compute impulses and damages to ships due to their collisions with asteroids
+let computeCrashResponse (asteroids : Asteroids) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) crashes =
+    let response (shipIdx : int<GPI>, astIdx : int<AstIdx>) =
+        let shipType = shipTypes.[shipIdx]
+        let impulse, _ =
+            computeImpulse
+                (shipType.CollisionRestitution)
+                ships.posVisible.[shipIdx] ships.speeds.[shipIdx] (shipType.InversedMass)
+                asteroids.pos.[astIdx] (TypedVector3<m/s>()) (0.0f</kg>)
+        let damage = shipType.Fragility * impulse.Length
+        (shipIdx, impulse, damage)
+
+    Array.map response crashes
