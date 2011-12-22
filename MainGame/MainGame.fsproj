@@ -68,7 +68,6 @@
   <ItemGroup>
     <Compile Include="Units.fs" />
     <Compile Include="WarpCoord.fs" />
-    <Compile Include="TrajectoryCollision.fs" />
     <Compile Include="GameState.fs" />
     <Compile Include="GameStateUpdate.fs" />
     <None Include="Script.fsx" />
