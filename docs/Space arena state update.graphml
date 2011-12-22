@@ -95,7 +95,7 @@
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="73.0" x="136.00079365079364" y="541.701171875"/>
-          <y:Fill color="#FFCC00" transparent="false"/>
+          <y:Fill color="#00FF00" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="18.701171875" modelName="internal" modelPosition="c" textColor="#000000" visible="true" width="52.0234375" x="10.48828125" y="5.6494140625">Crashing</y:NodeLabel>
           <y:Shape type="hexagon"/>
@@ -733,7 +733,6 @@
       </data>
     </node>
     <node id="n65">
-      <data key="d5"/>
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="90.36967080904742" x="712.8905614208732" y="666.701171875"/>

@@ -105,6 +105,7 @@ let destroyBullets bullets events =
       timeLeft = newTimeLeft;
       pos = newPos }
 
+
 /// Merge two bullet groups
 let appendBullets bullets1 bullets2 =
     { guids = Array.append bullets1.guids bullets2.guids;
@@ -114,18 +115,22 @@ let appendBullets bullets1 bullets2 =
       timeLeft = Array.append bullets1.timeLeft bullets2.timeLeft;
       pos = Array.append bullets1.pos bullets2.pos }
 
-/// Get a list of ship indices and asteroid indices corresponding to ships colliding with asteroids.
-/// Only deals with local ships.
-let computeCrashes dt (asteroids : Asteroids) (ships : Ships) localShips shipTypes =
-    let getIntersection (sphere : BoundingSphere) =
+
+/// Check intersection between a moving sphere and asteroids
+let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
+    let getIntersection direction (sphere : BoundingSphere) =
         let intersected = ref None
         Octree.checkIntersection
             (fun (bbox : BoundingBox) -> bbox.Intersects(sphere))
             (fun idxAsteroid ->
-                let astSphere = new BoundingSphere(asteroids.pos.[idxAsteroid].v, float32 asteroids.radius.[idxAsteroid])
-                if astSphere.Intersects(sphere) then
-                    intersected := Some idxAsteroid
-                    true
+                let astPos = asteroids.pos.[idxAsteroid]
+                if Vector3.Dot(astPos.v - sphere.Center, direction) >= 0.0f then
+                    let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
+                    if astSphere.Intersects(sphere) then
+                        intersected := Some idxAsteroid
+                        true
+                    else
+                        false
                 else
                     false)
             asteroids.octree
@@ -133,30 +138,35 @@ let computeCrashes dt (asteroids : Asteroids) (ships : Ships) localShips shipTyp
 
         !intersected
 
-    let result = new System.Collections.Generic.List<_>()
-    for shipIdx in localShips do
-        let speed = ships.speeds.[shipIdx]
-        let pos = ships.posClient.[shipIdx]
-        let course = Speed3.op_Multiply(dt, speed)
-        let courseLength = course.v.Length() * 1.0f<m>
-        let shipType : ShipType = MarkedArray.get shipTypes shipIdx
-        let radius = shipType.BoundingSphereRadius
-        assert (radius > 0.0f<m>)
-        if courseLength > radius then
-            let courseUnit = course.v / float32 courseLength
-            let mutable offset = 0.0f<m>
-            let mutable found = false
-            while not found && offset <= courseLength do
+    let course = Speed3.op_Multiply(dt, speed)
+    let courseLength = course.v.Length() * 1.0f<m>
+    assert (radius > 0.0f<m>)
+    if courseLength > radius then
+        let courseUnit = course.v / float32 courseLength
+        let rec work offset =
+            if offset <= courseLength then
                 let sphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit, float32 radius)
-                match getIntersection sphere with
-                | Some idxAsteroid -> result.Add((shipIdx, idxAsteroid)); found <- true
-                | None -> ()
-                offset <- offset + radius
-        else
-            let sphere = new BoundingSphere(pos.v, float32 radius)
-            match getIntersection sphere with
-            | Some idxAsteroid -> result.Add((shipIdx, idxAsteroid));
-            | None -> ()
+                match getIntersection speed.v sphere with
+                | Some idxAsteroid -> Some idxAsteroid
+                | None -> work (offset + radius)
+            else
+                None
+        work 0.0f<m>
+    else
+        let sphere = new BoundingSphere(pos.v, float32 radius)
+        getIntersection speed.v sphere
 
-    result
-    |> Seq.toList
+
+/// Get a list of ship indices and asteroid indices corresponding to ships colliding with asteroids.
+/// Only deals with local ships.
+let computeCrashes dt (asteroids : Asteroids) (ships : Ships) localShips shipTypes =
+    [|
+        for shipIdx in localShips do
+            let speed = ships.speeds.[shipIdx]
+            let pos = ships.posClient.[shipIdx]
+            let shipType : ShipType = MarkedArray.get shipTypes shipIdx
+            let radius = shipType.BoundingSphereRadius
+            match intersectSphereVsAsteroids dt asteroids pos speed radius with
+            | Some astIdx -> yield (shipIdx, astIdx)
+            | None -> ()            
+    |]
