@@ -180,7 +180,7 @@ let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
             let guid = bullets.guids.[bulletIdx]
             if guidIsLocal guid then
                 let speed = bullets.speeds.[bulletIdx]
-                let pos = bullets.speeds.[bulletIdx]
+                let pos = bullets.pos.[bulletIdx]
                 let radius = bullets.radii.[bulletIdx]
                 assert (radius > 0.0f<m>)
                 let course = Speed3.op_Multiply(dt, speed)
@@ -207,4 +207,21 @@ let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
                     match work 0.0f<m> with
                     | Some hit -> yield hit
                     | None -> ()
+    |]
+
+
+/// Compute an array of bullet guids and asteroid indices denoting the bullets colliding with asteroids.
+/// Only local bullets are considered.
+let computeBulletAsteroidHits guidIsLocal dt (asteroids : Asteroids) (bullets : Bullets) =
+    [|
+        for bulletIdx in 0 .. bullets.guids.Length - 1 do
+            let guid = bullets.guids.[bulletIdx]
+            if guidIsLocal guid then
+                let speed = bullets.speeds.[bulletIdx]
+                let pos = bullets.pos.[bulletIdx]
+                let radius = bullets.radii.[bulletIdx]
+                assert (radius > 0.0f<m>)
+                match intersectSphereVsAsteroids dt asteroids pos speed radius with
+                | Some astIdx -> yield (guid, astIdx)
+                | None -> ()
     |]

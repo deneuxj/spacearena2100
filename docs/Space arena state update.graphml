@@ -637,7 +637,7 @@
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="73.0" x="503.00079365079364" y="333.40234375"/>
-          <y:Fill color="#FFCC00" transparent="false"/>
+          <y:Fill color="#00FF00" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="18.701171875" modelName="internal" modelPosition="c" textColor="#000000" visible="true" width="70.029296875" x="1.4853515625" y="5.6494140625">Asteroid hits</y:NodeLabel>
           <y:Shape type="hexagon"/>
