@@ -157,9 +157,9 @@ let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>
         getIntersection speed.v sphere
 
 
-/// Get a list of ship indices and asteroid indices corresponding to ships colliding with asteroids.
+/// Get an array of ship indices and asteroid indices corresponding to ships colliding with asteroids.
 /// Only deals with local ships.
-let computeCrashes dt (asteroids : Asteroids) (ships : Ships) localShips shipTypes =
+let computeCrashes dt (asteroids : Asteroids) (ships : Ships) shipTypes localShips =
     [|
         for shipIdx in localShips do
             let speed = ships.speeds.[shipIdx]
@@ -169,4 +169,42 @@ let computeCrashes dt (asteroids : Asteroids) (ships : Ships) localShips shipTyp
             match intersectSphereVsAsteroids dt asteroids pos speed radius with
             | Some astIdx -> yield (shipIdx, astIdx)
             | None -> ()            
+    |]
+
+
+/// Get an array of bullet guids and ship indices corresponding to local bullet hits on ships.
+/// Hits are checked against the visible position of ships.
+let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
+    [|
+        for bulletIdx in 0 .. bullets.guids.Length - 1 do
+            let guid = bullets.guids.[bulletIdx]
+            if guidIsLocal guid then
+                let speed = bullets.speeds.[bulletIdx]
+                let pos = bullets.speeds.[bulletIdx]
+                let radius = bullets.radii.[bulletIdx]
+                assert (radius > 0.0f<m>)
+                let course = Speed3.op_Multiply(dt, speed)
+                let courseLength = course.v.Length() * 1.0f<m>
+                let courseUnit = course.v / float32 courseLength
+
+                for shipIdx in int ships.posVisible.First .. int ships.posVisible.Last do
+                    let shipIdx = shipIdx * 1<GPI>
+                    let pos' = ships.posVisible.[shipIdx]
+                    let shipType : ShipType = MarkedArray.get shipTypes shipIdx
+                    let radius' = shipType.BoundingSphereRadius
+                    assert (radius' > 0.0f<m>)
+                    let shipSphere = new BoundingSphere(pos'.v, float32 radius')
+
+                    let rec work offset =
+                        if offset <= courseLength then
+                            let bulletSphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit, float32 radius)
+                            if bulletSphere.Intersects(shipSphere) then
+                                Some (guid, shipIdx)
+                            else
+                                work (offset + radius)
+                        else
+                            None
+                    match work 0.0f<m> with
+                    | Some hit -> yield hit
+                    | None -> ()
     |]

@@ -73,7 +73,7 @@
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="73.0" x="744.1678571428571" y="541.701171875"/>
-          <y:Fill color="#FFCC00" transparent="false"/>
+          <y:Fill color="#00FF00" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="18.701171875" modelName="internal" modelPosition="c" textColor="#000000" visible="true" width="24.666015625" x="24.1669921875" y="5.6494140625">Hits</y:NodeLabel>
           <y:Shape type="hexagon"/>
@@ -714,7 +714,7 @@
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="73.0" x="494.1678571428571" y="541.701171875"/>
-          <y:Fill color="#FFCC00" transparent="false"/>
+          <y:Fill color="#00FF00" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="18.701171875" modelName="internal" modelPosition="c" textColor="#000000" visible="true" width="24.666015625" x="24.1669921875" y="5.6494140625">Hits</y:NodeLabel>
           <y:Shape type="hexagon"/>
