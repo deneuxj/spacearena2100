@@ -39,9 +39,8 @@ let createBullets now (bullets : Bullets) events =
         |> Array.map (function { event = BulletFired(_, _, radius, _, _) } -> radius | _ -> failwith "Unreachable")
 
     let newPos =
-        let inline mult (a, b) = CleverRake.XnaUtils.Speed3.(*) (a, b)
         events
-        |> Array.map (function { time = t0; event = BulletFired(_, _, _, pos, speed) } -> pos + mult(int2float32((now - t0) / (dmsPerS)), speed) | _ -> failwith "Unreachable")
+        |> Array.map (function { time = t0; event = BulletFired(_, _, _, pos, speed) } -> pos + int2float32((now - t0) / (dmsPerS)) * speed | _ -> failwith "Unreachable")
 
     let newSpeeds =
         events
@@ -138,7 +137,7 @@ let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>
 
         !intersected
 
-    let course = Speed3.op_Multiply(dt, speed)
+    let course = dt * speed
     let courseLength = course.v.Length() * 1.0f<m>
     assert (radius > 0.0f<m>)
     if courseLength > radius then
@@ -183,7 +182,7 @@ let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
                 let pos = bullets.pos.[bulletIdx]
                 let radius = bullets.radii.[bulletIdx]
                 assert (radius > 0.0f<m>)
-                let course = Speed3.op_Multiply(dt, speed)
+                let course = dt * speed
                 let courseLength = course.v.Length() * 1.0f<m>
                 let courseUnit = course.v / float32 courseLength
 
@@ -225,3 +224,35 @@ let computeBulletAsteroidHits guidIsLocal dt (asteroids : Asteroids) (bullets : 
                 | Some astIdx -> yield (guid, astIdx)
                 | None -> ()
     |]
+
+
+/// Compute the change in speed of two spherical colliding bodies.
+let computeImpulse response pos1 speed1 massInv1 pos2 speed2 massInv2 =
+    let checkCollisionSpeeds (pos1 : TypedVector3<m>) (pos2 : TypedVector3<m>) (speed1 : TypedVector3<m/s>) (speed2 : TypedVector3<m/s>) =
+        let d = pos2 - pos1
+        Vector3.Dot ((speed2 - speed1).v, d.v) < 0.0f
+
+
+    let collisionFactor
+        response pos1 pos2 vel1 vel2 (massInv1 : float32</kg>) (massInv2 : float32</kg>) =
+    
+        if checkCollisionSpeeds pos1 pos2 vel1 vel2
+        then
+            let v12 = vel1 - vel2
+            let n = (pos1 - pos2) |> TypedVector.normalize3
+
+            let x =
+                (1.0f + response) * TypedVector.dot3 (v12, n) /
+                (TypedVector.dot3 (n, n) * (massInv1 + massInv2))
+            x
+        else
+            0.0f<kg m/s>
+
+    let n = pos1 - pos2 |> TypedVector.normalize3
+    
+    let s = collisionFactor response pos1 pos2 speed1 speed2 massInv1 massInv2
+    
+    let imp1 = -s * massInv1 * n
+    let imp2 = s * massInv2 * n
+    
+    imp1, imp2
