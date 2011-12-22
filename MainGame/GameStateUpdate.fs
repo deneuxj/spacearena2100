@@ -198,7 +198,7 @@ let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
                         if offset <= courseLength then
                             let bulletSphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit, float32 radius)
                             if bulletSphere.Intersects(shipSphere) then
-                                Some (guid, shipIdx)
+                                Some (shipIdx, guid, pos, speed, radius)
                             else
                                 work (offset + radius)
                         else
@@ -270,3 +270,21 @@ let computeCrashResponse (asteroids : Asteroids) (ships : Ships) (shipTypes : Ma
         (shipIdx, impulse, damage)
 
     Array.map response crashes
+
+/// Compute impules and damages due to bullet hits in ships.
+let computeHitResponse (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) hits =
+    let K = 4.0f / 3.0f * Microsoft.Xna.Framework.MathHelper.Pi
+
+    let response (shipIdx : int<GPI>, _, bulletPos : TypedVector3<m>, bulletSpeed : TypedVector3<m/s>, bulletRadius : float32<m>) =
+        let shipType = shipTypes.[shipIdx]
+        let r3 = bulletRadius * bulletRadius * bulletRadius
+        let bulletMass = K * r3 * bulletDensity
+        let impulse, _ =
+            computeImpulse
+                (shipType.CollisionRestitution)
+                ships.posVisible.[shipIdx] ships.speeds.[shipIdx] (shipType.InversedMass)
+                bulletPos bulletSpeed (1.0f / bulletMass)
+        let damage = shipType.Fragility * impulse.Length
+        (shipIdx, impulse, damage)
+
+    Array.map response hits

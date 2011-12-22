@@ -45,6 +45,8 @@ with
 /// Angles, radians
 [<Measure>] type rad
 
+let bulletDensity = 1.0f<kg/m^3>
+
 type Asteroids =
     { pos : MarkedArray<AstIdx, TypedVector3<m>>;
       radius : MarkedArray<AstIdx, float32<m>>;
