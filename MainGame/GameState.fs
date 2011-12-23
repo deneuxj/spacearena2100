@@ -78,8 +78,6 @@ type Ships =
       posVisible : MarkedArray<GPI, TypedVector3<m>>;
       /// Last known position from the host of the player.
       posHost : MarkedArray<GPI, TypedVector3<m>>;
-      /// Time of last known position received from the host of the player.
-      posHostTime : MarkedArray<GPI, int<dms>>;
       /// [0, 1], used to compute posVisible.
       posLerpT : MarkedArray<GPI, float32>;
       speeds : MarkedArray<GPI, TypedVector3<m/s>>;
@@ -115,49 +113,3 @@ type State =
       time : int<dms>;
     }
 
-
-(*
-let update checkCollisionsWithAsteroids checkCollisionsWithBullets checkCollisionsBetweenShips checkCollisionsWithSupplies computeCollisionImpulses computeDamages applySupplies (description : Description) (state : State) =
-    let myPlayers = 
-        description.localPlayersIdxs
-        |> Set.ofList
-        |> Set.union (description.localAiPlayerIdxs |> Set.ofList)
-
-    let myPlayersIdxToAllIdx =
-        myPlayers
-        |> Set.toArray
-
-    let inline isMyPlayer i _ = myPlayers.Contains i
-
-    let myPlayerPos =
-        state.posHost
-        |> ArrayInlined.filteri isMyPlayer
-
-    let myPlayerSpeeds =
-        state.speed
-        |> ArrayInlined.filteri isMyPlayer
-
-    let myPlayerShipTypes =
-        description.shipTypes
-        |> ArrayInlined.filteri isMyPlayer
-
-    let collisionsWithBullets : ShipCollision list = checkCollisionsWithBullets state.posVisible state.speed description.shipTypes state.bulletPos state.bulletSpeed state.bulletRadius 
-
-    let collisionsWithAsteroids : ShipCollision list = checkCollisionsWithAsteroids myPlayerPos myPlayerSpeeds myPlayerShipTypes description.asteroidPos description.asteroidRadius description.asteroidOctree
-
-    let collisionsBetweenShips : ShipCollision list = checkCollisionsBetweenShips myPlayerPos myPlayerSpeeds myPlayerShipTypes state.posVisible state.speed
-
-    let collisionsWithSupplies : ShipCollision list = checkCollisionsWithSupplies myPlayerPos myPlayerSpeeds myPlayerShipTypes state.supplyPos state.supplyType
-
-    failwith "TODO" *)
-(* Update cycle:
- * Check collisions
- * Compute collision impulses
- * Damages to ships due to collisions
- * Respawn ships
- * Retire bullets
- * Apply supplies that were caught
- * Retire supplies
- * Integrate object movement
- * Camera shaking
- *)

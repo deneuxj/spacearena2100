@@ -172,7 +172,7 @@
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="88.0" x="835.0007936507936" y="783.40234375"/>
-          <y:Fill color="#FFCC00" transparent="false"/>
+          <y:Fill color="#00FF00" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="18.701171875" modelName="internal" modelPosition="c" textColor="#000000" visible="true" width="74.03125" x="6.984375" y="5.6494140625">Retire bullets</y:NodeLabel>
           <y:Shape type="hexagon"/>
@@ -504,7 +504,7 @@
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="73.0" x="962.2507936507936" y="893.40234375"/>
-          <y:Fill color="#FFCC00" transparent="false"/>
+          <y:Fill color="#00FF00" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="18.701171875" modelName="internal" modelPosition="c" textColor="#000000" visible="true" width="51.3671875" x="10.81640625" y="5.6494140625">Integrate</y:NodeLabel>
           <y:Shape type="hexagon"/>
@@ -633,7 +633,6 @@
       </data>
     </node>
     <node id="n56">
-      <data key="d5"/>
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="73.0" x="503.00079365079364" y="333.40234375"/>
@@ -645,7 +644,6 @@
       </data>
     </node>
     <node id="n57">
-      <data key="d5"/>
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="70.17123015873017" x="360.91517857142856" y="528.40234375"/>
@@ -657,7 +655,6 @@
       </data>
     </node>
     <node id="n58">
-      <data key="d5"/>
       <data key="d6">
         <y:ShapeNode>
           <y:Geometry height="30.0" width="70.17123015873017" x="1149.4449404761904" y="91.701171875"/>

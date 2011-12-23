@@ -301,3 +301,42 @@ let retireBullets (bullets : Bullets) =
       radii = filter bullets.radii;
       owners = filter bullets.owners;
       timeLeft = filter bullets.timeLeft }
+
+
+let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : MarkedArray<GPI, _>) : Ships =
+    let inline getInversedMass shipIdx =
+        shipTypes.[shipIdx].InversedMass
+
+    let speeds =
+        Array.mapi2
+            (fun idx speed (force : TypedVector3<N>) ->
+                let shipIdx = idx * 1<GPI>
+                let accel : TypedVector3<m/s^2> = getInversedMass shipIdx * force
+                let speed : TypedVector3<m/s> = speed + dt * accel
+                speed)
+            ships.speeds.Content forces.Content
+
+    let posClient =
+        Array.map2
+            (fun pos speed -> pos + dt * speed)
+            ships.posClient.Content
+            speeds
+
+    let posHost =
+        Array.map2
+            (fun pos speed -> pos + dt * speed)
+            ships.posHost.Content
+            speeds
+
+    let posVisible =
+        ArrayInlined.map3
+            (fun (posHost : TypedVector3<m>) (posClient : TypedVector3<m>) (t : float32) -> (1.0f - t) * posHost + t * posClient)
+            ships.posHost.Content
+            ships.posClient.Content
+            ships.posLerpT.Content
+
+    { ships with
+        speeds = MarkedArray speeds
+        posClient = MarkedArray posClient
+        posHost = MarkedArray posHost
+        posVisible = MarkedArray posVisible }
