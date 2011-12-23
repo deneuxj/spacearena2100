@@ -288,3 +288,16 @@ let computeHitResponse (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) 
         (shipIdx, impulse, damage)
 
     Array.map response hits
+
+/// Remove bullets which have expired.
+let retireBullets (bullets : Bullets) =
+    let filter x =
+        x
+        |> ArrayInlined.filterRef ((>=) 0<dms>) bullets.timeLeft
+
+    { guids = filter bullets.guids;
+      pos = filter bullets.pos;
+      speeds = filter bullets.speeds;
+      radii = filter bullets.radii;
+      owners = filter bullets.owners;
+      timeLeft = filter bullets.timeLeft }
