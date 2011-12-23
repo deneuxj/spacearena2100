@@ -302,7 +302,7 @@ let retireBullets (bullets : Bullets) =
       owners = filter bullets.owners;
       timeLeft = filter bullets.timeLeft }
 
-
+/// Update the position and speed of all ships.
 let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : MarkedArray<GPI, _>) : Ships =
     let inline getInversedMass shipIdx =
         shipTypes.[shipIdx].InversedMass
@@ -340,3 +340,12 @@ let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (
         posClient = MarkedArray posClient
         posHost = MarkedArray posHost
         posVisible = MarkedArray posVisible }
+
+
+/// Update the position of all bullets.
+let integrateBullets dt (bullets : Bullets) =
+    let newPos =
+        Array.map2 (fun pos speed -> pos + dt * speed) bullets.pos bullets.speeds
+
+    { bullets with
+        pos = newPos }
