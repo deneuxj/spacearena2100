@@ -64,7 +64,7 @@ type Description =
       localPlayersIdxs : int<GPI> list;
       localAiPlayerIdxs : int<GPI> list;
       remotePlayerIdxs : int<GPI> list;
-      shipTypes : ShipType[];
+      shipTypes : MarkedArray<GPI, ShipType>;
       /// Players who left the game early.
       gonePlayerIdxs : int<GPI> list;
       asteroids : Asteroids;

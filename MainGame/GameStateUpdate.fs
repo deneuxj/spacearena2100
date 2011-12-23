@@ -11,7 +11,7 @@ open WarpCoord
 type RemoteEvent =
     | DamageAndImpulse of int<GPI> * float32<Health> * TypedVector3<m/s> // Ship idx, damage, impulse
     | BulletDestroyed of int<BulletGuid> // Bullet GUID
-    | ShipState of int<GPI> * Vector3 * Vector3 * Vector3 * Vector3 * Vector3 // Ship idx, position, heading, right, speed, thrust
+    | ShipState of int<GPI> * TypedVector3<m> * TypedVector3<1> * TypedVector3<1> * TypedVector3<m/s> * TypedVector3<N> // Ship idx, position, heading, right, speed, thrust
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
     | SupplySpawn of int<GSI> * Vector3 * float<m> * SupplyType // Supply idx, position, radius, type
     | SupplyGrabbed of int<GSI> // Supply idx
@@ -58,21 +58,14 @@ let createBullets now (bullets : Bullets) events =
       timeLeft = Array.append bullets.timeLeft newTimeLeft;
       pos = Array.append bullets.pos newPos }
 
-/// Mutate speed and array events as requested by DamageAndImpulse entries in a list of events.
-let applyDamageAndImpulse speeds health events =
-    for e in events do
-        match e with
-        | { event = DamageAndImpulse (idx, damage, impulse) } ->
-            MarkedArray.mutate ((+) impulse) (speeds, idx)
-            MarkedArray.mutate (fun x -> x - damage) (health, idx)
-        | _ -> ()
+/// Mutate speed and health arrays.
+let applyDamageAndImpulse speeds health (damagesAndImpulses : (int<GPI> * TypedVector3<m/s> * float32<Health>)[]) =
+    for (idx, impulse, damage) in damagesAndImpulses do
+        MarkedArray.mutate ((+) impulse) (speeds, idx)
+        MarkedArray.mutate (fun x -> x - damage) (health, idx)
 
 /// Remove bullets as requested by BulletDestroyed events.
-let destroyBullets bullets events =
-    let guidsToRetire =
-        events
-        |> Array.choose(function { event = BulletDestroyed guid } -> Some guid | _ -> None)
-        |> Set.ofArray
+let destroyBullets bullets (guidsToRetire : Set<int<BulletGuid>>) =
 
     let newOwners =
         bullets.owners
@@ -117,7 +110,7 @@ let appendBullets bullets1 bullets2 =
 
 
 /// Check intersection between a moving sphere and asteroids
-let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
+let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
     let warp = warp (asteroids.fieldSizes.v)
     let getIntersection direction (sphere : BoundingSphere) =
         let intersected = ref None
@@ -160,7 +153,7 @@ let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>
 
 /// Get an array of ship indices and asteroid indices corresponding to ships colliding with asteroids.
 /// Only deals with local ships.
-let computeCrashes V dt (asteroids : Asteroids) (ships : Ships) shipTypes localShips =
+let computeCrashes dt (asteroids : Asteroids) (ships : Ships) shipTypes localShips =
     [|
         for shipIdx in localShips do
             let speed = ships.speeds.[shipIdx]
@@ -175,7 +168,7 @@ let computeCrashes V dt (asteroids : Asteroids) (ships : Ships) shipTypes localS
 
 /// Get an array of bullet guids and ship indices corresponding to local bullet hits on ships.
 /// Hits are checked against the visible position of ships.
-let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
+let computeHits guidIsLocal (dt : float32<s>) (ships : Ships) shipTypes (bullets : Bullets) =
     [|
         for bulletIdx in 0 .. bullets.guids.Length - 1 do
             let guid = bullets.guids.[bulletIdx]
@@ -343,11 +336,85 @@ let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (
         posHost = MarkedArray posHost
         posVisible = MarkedArray posVisible }
 
-
 /// Update the position of all bullets.
 let integrateBullets dt (bullets : Bullets) =
     let newPos =
         Array.map2 (fun pos speed -> pos + dt * speed) bullets.pos bullets.speeds
 
+    let newTimeLeft =
+        let dt = dmsPerS_f * dt |> intFromFloat32
+        bullets.timeLeft
+        |> Array.map (fun timeLeft -> timeLeft - dt)
+
     { bullets with
         pos = newPos }
+
+/// Check if a bullet guid was produced by a specific host.
+let guidIsLocal hostNumber (guid : int<BulletGuid>) =
+    (int guid &&& 0xFF) = hostNumber
+
+/// Get the next bullet guid number.
+let nextGuid last =
+    last + 256<BulletGuid>
+
+/// Update the game state.
+let update hostNumber dt (description : Description) events forces (state : State) =
+    let guidIsLocal = guidIsLocal hostNumber
+    
+    let bullets = createBullets state.time state.bullets events
+    
+    let bulletHitsOnShips = computeHits guidIsLocal dt state.ships description.shipTypes state.bullets
+    let bulletHitsOnAsteroids = computeBulletAsteroidHits guidIsLocal dt description.asteroids state.bullets
+    let crashes = computeCrashes dt description.asteroids state.ships description.shipTypes description.localPlayersIdxs
+    
+    let damagesDueToHits = computeHitResponse state.ships description.shipTypes bulletHitsOnShips
+    let damagesDueToCrashes = computeCrashResponse description.asteroids state.ships description.shipTypes crashes
+
+    let guidsRemotelyDestroyed =
+        events
+        |> Array.choose(function { event = BulletDestroyed guid } -> Some guid | _ -> None)
+        |> Set.ofArray
+
+    let guidsDestroyedOnHits =
+        bulletHitsOnShips
+        |> Seq.map (fun (_, guid, _, _, _) -> guid)
+        |> Set.ofSeq
+
+    let guidsDestroyedOnAsteroids =
+        bulletHitsOnAsteroids
+        |> Seq.map fst
+        |> Set.ofSeq
+
+    let guidsToRemove =
+        Set.unionMany [ guidsRemotelyDestroyed ; guidsDestroyedOnAsteroids ; guidsDestroyedOnHits ]
+
+    let bullets = destroyBullets bullets guidsToRemove
+    let bullets = retireBullets bullets
+    let bullets = integrateBullets dt bullets
+
+    let remoteDamages =
+        events
+        |> Array.choose (
+            function
+            | { event = DamageAndImpulse (idx, damage, impulse) } -> Some (idx, impulse, damage)
+            | _ -> None)
+
+    applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToCrashes
+    applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToHits
+    applyDamageAndImpulse state.ships.speeds state.ships.health remoteDamages
+
+    let allForces = Array.zeroCreate description.shipTypes.Content.Length |> MarkedArray
+    for (shipIdx, force) in Seq.zip description.localPlayersIdxs forces do
+        allForces.[shipIdx] <- force
+    for e in events do
+        match e with
+        | { event = ShipState(shipIdx, _, _, _, _, force) } -> allForces.[shipIdx] <- force
+        | _ -> ()
+
+    let ships = integrateShips dt state.ships description.shipTypes allForces
+    
+    { state with
+        ships = ships
+        bullets = bullets
+        time = state.time + intFromFloat32 (dmsPerS_f * dt)
+    }
