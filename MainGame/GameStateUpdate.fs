@@ -5,6 +5,7 @@ open CleverRake.XnaUtils
 
 open Units
 open GameState
+open WarpCoord
 
 /// Synchronization message types sent over the network
 type RemoteEvent =
@@ -116,7 +117,8 @@ let appendBullets bullets1 bullets2 =
 
 
 /// Check intersection between a moving sphere and asteroids
-let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
+let intersectSphereVsAsteroids V dt (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
+    let warp = warp V
     let getIntersection direction (sphere : BoundingSphere) =
         let intersected = ref None
         Octree.checkIntersection
@@ -144,7 +146,7 @@ let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>
         let courseUnit = course.v / float32 courseLength
         let rec work offset =
             if offset <= courseLength then
-                let sphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit, float32 radius)
+                let sphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit |> warp, float32 radius)
                 match getIntersection speed.v sphere with
                 | Some idxAsteroid -> Some idxAsteroid
                 | None -> work (offset + radius)
@@ -152,20 +154,20 @@ let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>
                 None
         work 0.0f<m>
     else
-        let sphere = new BoundingSphere(pos.v, float32 radius)
+        let sphere = new BoundingSphere(pos.v |> warp, float32 radius)
         getIntersection speed.v sphere
 
 
 /// Get an array of ship indices and asteroid indices corresponding to ships colliding with asteroids.
 /// Only deals with local ships.
-let computeCrashes dt (asteroids : Asteroids) (ships : Ships) shipTypes localShips =
+let computeCrashes V dt (asteroids : Asteroids) (ships : Ships) shipTypes localShips =
     [|
         for shipIdx in localShips do
             let speed = ships.speeds.[shipIdx]
             let pos = ships.posClient.[shipIdx]
             let shipType : ShipType = MarkedArray.get shipTypes shipIdx
             let radius = shipType.BoundingSphereRadius
-            match intersectSphereVsAsteroids dt asteroids pos speed radius with
+            match intersectSphereVsAsteroids V dt asteroids pos speed radius with
             | Some astIdx -> yield (shipIdx, astIdx)
             | None -> ()            
     |]
@@ -211,7 +213,7 @@ let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
 
 /// Compute an array of bullet guids and asteroid indices denoting the bullets colliding with asteroids.
 /// Only local bullets are considered.
-let computeBulletAsteroidHits guidIsLocal dt (asteroids : Asteroids) (bullets : Bullets) =
+let computeBulletAsteroidHits V guidIsLocal dt (asteroids : Asteroids) (bullets : Bullets) =
     [|
         for bulletIdx in 0 .. bullets.guids.Length - 1 do
             let guid = bullets.guids.[bulletIdx]
@@ -220,7 +222,7 @@ let computeBulletAsteroidHits guidIsLocal dt (asteroids : Asteroids) (bullets : 
                 let pos = bullets.pos.[bulletIdx]
                 let radius = bullets.radii.[bulletIdx]
                 assert (radius > 0.0f<m>)
-                match intersectSphereVsAsteroids dt asteroids pos speed radius with
+                match intersectSphereVsAsteroids V dt asteroids pos speed radius with
                 | Some astIdx -> yield (guid, astIdx)
                 | None -> ()
     |]
