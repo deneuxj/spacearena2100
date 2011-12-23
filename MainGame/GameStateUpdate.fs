@@ -117,8 +117,8 @@ let appendBullets bullets1 bullets2 =
 
 
 /// Check intersection between a moving sphere and asteroids
-let intersectSphereVsAsteroids V dt (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
-    let warp = warp V
+let intersectSphereVsAsteroids dt (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
+    let warp = warp (asteroids.fieldSizes.v)
     let getIntersection direction (sphere : BoundingSphere) =
         let intersected = ref None
         Octree.checkIntersection
@@ -167,7 +167,7 @@ let computeCrashes V dt (asteroids : Asteroids) (ships : Ships) shipTypes localS
             let pos = ships.posClient.[shipIdx]
             let shipType : ShipType = MarkedArray.get shipTypes shipIdx
             let radius = shipType.BoundingSphereRadius
-            match intersectSphereVsAsteroids V dt asteroids pos speed radius with
+            match intersectSphereVsAsteroids dt asteroids pos speed radius with
             | Some astIdx -> yield (shipIdx, astIdx)
             | None -> ()            
     |]
@@ -213,7 +213,7 @@ let computeHits guidIsLocal dt (ships : Ships) shipTypes (bullets : Bullets) =
 
 /// Compute an array of bullet guids and asteroid indices denoting the bullets colliding with asteroids.
 /// Only local bullets are considered.
-let computeBulletAsteroidHits V guidIsLocal dt (asteroids : Asteroids) (bullets : Bullets) =
+let computeBulletAsteroidHits guidIsLocal dt (asteroids : Asteroids) (bullets : Bullets) =
     [|
         for bulletIdx in 0 .. bullets.guids.Length - 1 do
             let guid = bullets.guids.[bulletIdx]
@@ -222,7 +222,7 @@ let computeBulletAsteroidHits V guidIsLocal dt (asteroids : Asteroids) (bullets 
                 let pos = bullets.pos.[bulletIdx]
                 let radius = bullets.radii.[bulletIdx]
                 assert (radius > 0.0f<m>)
-                match intersectSphereVsAsteroids V dt asteroids pos speed radius with
+                match intersectSphereVsAsteroids dt asteroids pos speed radius with
                 | Some astIdx -> yield (guid, astIdx)
                 | None -> ()
     |]

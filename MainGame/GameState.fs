@@ -52,7 +52,8 @@ type Asteroids =
       radius : MarkedArray<AstIdx, float32<m>>;
       rotX : MarkedArray<AstIdx, float32<rad>>;
       rotY : MarkedArray<AstIdx, float32<rad>>;
-      octree : Octree.Node<int<AstIdx>> }
+      octree : Octree.Node<int<AstIdx>>;
+      fieldSizes : TypedVector3<m> }
     
 /// Data that does not change often during a round.
 type Description =
