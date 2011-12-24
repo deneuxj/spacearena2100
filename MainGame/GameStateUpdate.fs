@@ -298,30 +298,46 @@ let retireBullets (bullets : Bullets) =
       timeLeft = filter bullets.timeLeft }
 
 /// Update the position and speed of all ships.
-let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : MarkedArray<GPI, _>) : Ships =
+let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : TypedVector3<N> list) (localPlayers : int<GPI> list): Ships =
     let inline getInversedMass shipIdx =
         shipTypes.[shipIdx].InversedMass
 
-    let speeds =
-        Array.mapi2
-            (fun idx speed (force : TypedVector3<N>) ->
-                let shipIdx = idx * 1<GPI>
+    let accels = ships.accels.Content |> Array.copy |> MarkedArray
+    
+    // Set accelerations of local players
+    let rec work shipIdx localPlayers (forces : TypedVector3<N> list) =
+        if shipIdx <= accels.Last then
+            match localPlayers, forces with
+            | head :: restPlayers, force :: restForces when head = shipIdx ->
                 let accel : TypedVector3<m/s^2> = getInversedMass shipIdx * force
+                accels.[shipIdx] <- accel
+                work (shipIdx + 1<GPI>) restPlayers restForces
+            | _ ->
+                work (shipIdx + 1<GPI>) localPlayers forces
+
+    work 0<GPI> localPlayers forces
+
+    let speeds2 =
+        Array.mapi2
+            (fun idx speed (accel : TypedVector3<m/s^2>) ->
+                let shipIdx = idx * 1<GPI>
                 let speed : TypedVector3<m/s> = speed + dt * accel
                 speed)
-            ships.speeds.Content forces.Content
+            ships.speeds.Content accels.Content
 
     let posClient =
-        Array.map2
-            (fun pos speed -> pos + dt * speed)
+        ArrayInlined.map3
+            (fun pos speed speed2-> pos + 0.5f * dt * (speed + speed2))
             ships.posClient.Content
-            speeds
+            ships.speeds.Content
+            speeds2
 
     let posHost =
-        Array.map2
-            (fun pos speed -> pos + dt * speed)
+        ArrayInlined.map3
+            (fun pos speed speed2 -> pos + 0.5f * dt * (speed + speed2))
             ships.posHost.Content
-            speeds
+            ships.speeds.Content
+            speeds2
 
     let posVisible =
         ArrayInlined.map3
@@ -331,7 +347,8 @@ let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (
             ships.posLerpT.Content
 
     { ships with
-        speeds = MarkedArray speeds
+        accels = accels
+        speeds = MarkedArray speeds2
         posClient = MarkedArray posClient
         posHost = MarkedArray posHost
         posVisible = MarkedArray posVisible }
@@ -440,15 +457,7 @@ let update hostNumber dt (description : Description) events forces (state : Stat
     applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToHits
     applyDamageAndImpulse state.ships.speeds state.ships.health remoteDamages
 
-    let allForces = Array.zeroCreate description.shipTypes.Content.Length |> MarkedArray
-    for (shipIdx, force) in Seq.zip description.localPlayersIdxs forces do
-        allForces.[shipIdx] <- force
-    for e in events do
-        match e with
-        | { event = ShipState(shipIdx, _, _, _, _, force) } -> allForces.[shipIdx] <- force
-        | _ -> ()
-
-    let ships = integrateShips dt state.ships description.shipTypes allForces
+    let ships = integrateShips dt state.ships description.shipTypes forces description.localPlayersIdxs
     
     { state with
         ships = ships
