@@ -336,6 +336,41 @@ let integrateShips dt (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (
         posHost = MarkedArray posHost
         posVisible = MarkedArray posVisible }
 
+/// Mutate posHost and the interpolation parameter posLerpT depending on sync events.
+let updateDeadReckoning frameDt (now : int<dms>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (events : TimedRemoteEvent[]) =
+    let lerpTime = 0.3f<s>
+    let updateOfShip =
+        events
+        |> Array.choose (
+            function
+            | { time = t; event = ShipState (shipIdx, pos, heading, right, speed, force) } -> Some (shipIdx, (t, pos, heading, right, speed, force))
+            | _ -> None)
+        |> Map.ofSeq
+
+    for shipIdx in ships.headings.First .. 1<GPI> .. ships.headings.Last do
+        match Map.tryFind shipIdx updateOfShip with
+        | Some (time, pos, heading, right, speed, force) ->
+            // Update posHost, speed and accel by integrating from the timestamp of the update event.
+            // The old posHost is moved to posClient.
+            ships.posClient.[shipIdx] <- ships.posHost.[shipIdx]
+            let dt = int2float32 ((now - time) / dmsPerS)
+            let massInv = shipTypes.[shipIdx].InversedMass
+            let accel = massInv * force
+            let speed2 = speed + dt * accel
+            let pos = pos + 0.5f * dt * (speed + speed2)
+            ships.posClient.[shipIdx] <- ships.posHost.[shipIdx]
+            ships.posHost.[shipIdx] <- pos
+            ships.speeds.[shipIdx] <- speed2
+            ships.accels.[shipIdx] <- accel
+            ships.posLerpT.[shipIdx] <- 0.0f
+            // Orientation attributes are copied
+            ships.headings.[shipIdx] <- heading
+            ships.rights.[shipIdx] <- right
+        | None ->
+            // No update for this ship, update the interpolation parameter.
+            let newLerpT = min 1.0f (ships.posLerpT.[shipIdx] + frameDt / lerpTime)
+            ships.posLerpT.[shipIdx] <- newLerpT
+
 /// Update the position of all bullets.
 let integrateBullets dt (bullets : Bullets) =
     let newPos =
@@ -361,6 +396,8 @@ let nextGuid last =
 let update hostNumber dt (description : Description) events forces (state : State) =
     let guidIsLocal = guidIsLocal hostNumber
     
+    updateDeadReckoning dt state.time state.ships description.shipTypes events
+
     let bullets = createBullets state.time state.bullets events
     
     let bulletHitsOnShips = computeHits guidIsLocal dt state.ships description.shipTypes state.bullets

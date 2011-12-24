@@ -71,8 +71,8 @@ type Description =
     }
 
 type Ships =
-    { headings : MarkedArray<GPI, TypedVector3<m>>;
-      rights : MarkedArray<GPI, TypedVector3<m>>;
+    { headings : MarkedArray<GPI, TypedVector3<1>>;
+      rights : MarkedArray<GPI, TypedVector3<1>>;
       /// Position we had computed last time we received a position for the player's host.
       posClient : MarkedArray<GPI, TypedVector3<m>>;
       /// Position where players here see this ship. Interpolated between posClient and posHost.
