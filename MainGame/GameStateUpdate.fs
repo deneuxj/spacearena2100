@@ -298,24 +298,28 @@ let retireBullets (bullets : Bullets) =
       timeLeft = filter bullets.timeLeft }
 
 /// Update the position and speed of all ships.
-let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : TypedVector3<N> list) (localPlayers : int<GPI> list): Ships =
+let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : TypedVector3<N> list) localHeadings localRights (localPlayers : int<GPI> list): Ships =
     let inline getInversedMass shipIdx =
         shipTypes.[shipIdx].InversedMass
 
     let accels = ships.accels.Content |> Array.copy |> MarkedArray
-    
+    let headings = ships.headings.Content |> Array.copy |> MarkedArray
+    let rights = ships.rights.Content |> Array.copy |> MarkedArray
+
     // Set accelerations of local players
-    let rec work shipIdx localPlayers (forces : TypedVector3<N> list) =
+    let rec work shipIdx localPlayers (forces : TypedVector3<N> list) localHeadings localRights =
         if shipIdx <= accels.Last then
-            match localPlayers, forces with
-            | head :: restPlayers, force :: restForces when head = shipIdx ->
+            match localPlayers, forces, localHeadings, localRights with
+            | head :: restPlayers, force :: restForces, heading :: restHeadings, right :: restRights when head = shipIdx ->
                 let accel : TypedVector3<m/s^2> = getInversedMass shipIdx * force
                 accels.[shipIdx] <- accel
-                work (shipIdx + 1<GPI>) restPlayers restForces
+                headings.[shipIdx] <- heading
+                rights.[shipIdx] <- right
+                work (shipIdx + 1<GPI>) restPlayers restForces restHeadings restRights
             | _ ->
-                work (shipIdx + 1<GPI>) localPlayers forces
+                work (shipIdx + 1<GPI>) localPlayers forces localHeadings localRights
 
-    work 0<GPI> localPlayers forces
+    work 0<GPI> localPlayers forces localHeadings localRights
 
     let speeds2 =
         Array.mapi2
@@ -348,6 +352,8 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
 
     { ships with
         accels = accels
+        headings = headings
+        rights = rights
         speeds = MarkedArray speeds2
         posClient = MarkedArray posClient
         posHost = MarkedArray posHost
@@ -410,7 +416,7 @@ let nextGuid last =
     last + 256<BulletGuid>
 
 /// Update the game state.
-let update hostNumber dt (description : Description) events forces (state : State) =
+let update hostNumber dt (description : Description) events forces headings rights (state : State) =
     let guidIsLocal = guidIsLocal hostNumber
     
     updateDeadReckoning dt state.time state.ships description.shipTypes events
@@ -457,7 +463,7 @@ let update hostNumber dt (description : Description) events forces (state : Stat
     applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToHits
     applyDamageAndImpulse state.ships.speeds state.ships.health remoteDamages
 
-    let ships = integrateShips dt state.ships description.shipTypes forces description.localPlayersIdxs
+    let ships = integrateShips dt state.ships description.shipTypes forces headings rights description.localPlayersIdxs
     
     { state with
         ships = ships
