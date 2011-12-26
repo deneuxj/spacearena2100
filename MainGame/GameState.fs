@@ -42,9 +42,6 @@ with
 /// Globally unique id of bullets
 [<Measure>] type BulletGuid
 
-/// Angles, radians
-[<Measure>] type rad
-
 let bulletDensity = 1.0f<kg/m^3>
 
 type Asteroids =
@@ -91,6 +88,7 @@ type Ships =
       timeBeforeFire : MarkedArray<GPI, int<dms>>;
       /// -1 means "not dead".
       timeBeforeRespawn : MarkedArray<GPI, int<dms>>;
+      targetSpeeds : MarkedArray<GPI, float32<m/s>>;
       scores : MarkedArray<GPI, float32<Points>> }
 
 type Bullets =
