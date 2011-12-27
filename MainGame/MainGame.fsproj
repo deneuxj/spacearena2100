@@ -71,6 +71,7 @@
     <Compile Include="GameState.fs" />
     <Compile Include="ShipControl.fs" />
     <Compile Include="GameStateUpdate.fs" />
+    <Compile Include="Rendering.fs" />
     <None Include="Script.fsx" />
   </ItemGroup>
   <ItemGroup>
@@ -87,6 +88,11 @@
     <ProjectReference Include="..\..\xnautils\XNAUtils\XNAUtils.fsproj">
       <Name>XNAUtils</Name>
       <Project>{ebfab7eb-ff0b-4de3-842b-bab06dcd3d42}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\InstancedModel\InstancedModel.csproj">
+      <Name>InstancedModel</Name>
+      <Project>{3848532a-dc36-439d-9f91-832e1dbb1537}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>
