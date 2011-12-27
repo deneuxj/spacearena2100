@@ -79,13 +79,14 @@ type Ships =
       speeds : MarkedArray<GPI, TypedVector3<m/s>>;
       accels : MarkedArray<GPI, TypedVector3<m/s^2>>;
       health : MarkedArray<GPI, float32<Health>>;
-      numFastBullets : MarkedArray<GPI, int>;
-      numBigBullets : MarkedArray<GPI, int>;
-      numMultiFire : MarkedArray<GPI, int>;
-      numHighRate : MarkedArray<GPI, int>;
-      timeBeforeFire : MarkedArray<GPI, int<dms>>;
+      // Local players only
+      numFastBullets : int list;
+      numBigBullets : int list;
+      numMultiFire : int list;
+      numHighRate : int list;
+      timeBeforeFire : int<dms> list;
       /// -1 means "not dead".
-      timeBeforeRespawn : MarkedArray<GPI, int<dms>>;
+      timeBeforeRespawn : int<dms> list;
       localTargetSpeeds : float32<m/s> list;
       scores : MarkedArray<GPI, float32<Points>> }
 
