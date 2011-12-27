@@ -79,11 +79,18 @@ type FiresWith = Triggers | Bumpers
 /// Personal settings for gamepads.
 type GamepadControlSettings =
     { steering : SteersWith;
-      pullOrientation : VerticalAxis
-      thrustOrientation : VerticalAxis
-      lookOrientation : VerticalAxis
+      pullOrientation : VerticalAxis;
+      thrustOrientation : VerticalAxis;
+      lookOrientation : VerticalAxis;
       firesWith : FiresWith }
 
+let defaultSettings =
+    { steering = LeftThumb;
+      pullOrientation = Direct;
+      thrustOrientation = Direct;
+      lookOrientation = Direct;
+      firesWith = Bumpers }
+      
 /// Controls of a ship. Analog controls are expressed in Input Units.
 type Controls =
     { turnRight : float32<iu>
