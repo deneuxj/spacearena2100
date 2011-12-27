@@ -88,7 +88,7 @@ type Ships =
       timeBeforeFire : MarkedArray<GPI, int<dms>>;
       /// -1 means "not dead".
       timeBeforeRespawn : MarkedArray<GPI, int<dms>>;
-      targetSpeeds : MarkedArray<GPI, float32<m/s>>;
+      localTargetSpeeds : float32<m/s> list;
       scores : MarkedArray<GPI, float32<Points>> }
 
 type Bullets =
