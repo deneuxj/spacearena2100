@@ -71,6 +71,7 @@
     <Compile Include="GameState.fs" />
     <Compile Include="ShipControl.fs" />
     <Compile Include="GameStateUpdate.fs" />
+    <Compile Include="TestGameComponent.fs" />
     <Compile Include="Rendering.fs" />
     <None Include="Script.fsx" />
   </ItemGroup>

@@ -35,7 +35,7 @@ let renderAsteroids (renderer : InstancedModelRenderer) (fieldSize : float32<m>)
 
     renderer.Draw(transforms, view, projection)
 
-let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector<1>[]) (rights : TypedVector<1>[]) =
+let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) =
     let view =
         Matrix.CreateLookAt(position.v, position.v + heading.v, TypedVector.cross3(right, heading).v)
 

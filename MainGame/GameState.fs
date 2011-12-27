@@ -47,17 +47,15 @@ let bulletDensity = 1.0f<kg/m^3>
 type Asteroids =
     { pos : MarkedArray<AstIdx, TypedVector3<m>>;
       radius : MarkedArray<AstIdx, float32<m>>;
-      rotX : MarkedArray<AstIdx, float32<rad>>;
-      rotY : MarkedArray<AstIdx, float32<rad>>;
-      octree : Octree.Node<int<AstIdx>>;
+      rotations : MarkedArray<AstIdx, Quaternion>;
+      octree : Octree.Node<int<AstIdx> list>;
       fieldSizes : TypedVector3<m> }
     
 /// Data that does not change often during a round.
 type Description =
     { numPlayers : int;
       myHostId : int;
-      areaSize : float32<m>;
-      playerNames : string[];
+      playerNames : MarkedArray<GPI, string>;
       localPlayersIdxs : int<GPI> list;
       localAiPlayerIdxs : int<GPI> list;
       remotePlayerIdxs : int<GPI> list;
