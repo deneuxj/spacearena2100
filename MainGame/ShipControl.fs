@@ -81,8 +81,6 @@ type Controls =
 let getControls settings (pi : PlayerIndex) =
     let state = GamePad.GetState(pi)
     let turnRight =
-        1.0f<iu>
-        *
         match settings.steering with
         | LeftThumb -> state.ThumbSticks.Left.X
         | RightThumb -> state.ThumbSticks.Right.X
@@ -93,17 +91,17 @@ let getControls settings (pi : PlayerIndex) =
         | RightThumb -> state.ThumbSticks.Right.X
         *
         match settings.pullOrientation with
-        | Direct -> 1.0f<iu>
-        | Inverted -> -1.0f<iu>
+        | Direct -> 1.0f
+        | Inverted -> -1.0f
 
     let forwardSpeedAdjust =
-        1.0f<iu>
-        *
         (state.Triggers.Right - state.Triggers.Left)
 
-    { turnRight = turnRight
-      turnUp = turnUp
-      forwardSpeedAdjust = forwardSpeedAdjust }
+    let pwr (x : float32) : float32 = x * x * x
+
+    { turnRight = 1.0f<iu> * pwr turnRight
+      turnUp = 1.0f<iu> * pwr turnUp
+      forwardSpeedAdjust = 1.0f<iu> * forwardSpeedAdjust }
 
 let handlePlayerInputs (dt : float32<s>) localPlayers settings playerIndices (ships : GameState.Ships) (shipTypes : MarkedArray<GameState.GPI, GameState.ShipType>) =
     let controls =
