@@ -116,17 +116,19 @@ let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : 
         let intersected = ref None
         Octree.checkIntersection
             (fun (bbox : BoundingBox) -> bbox.Intersects(sphere))
-            (fun idxAsteroid ->
-                let astPos = asteroids.pos.[idxAsteroid]
-                if Vector3.Dot(astPos.v - sphere.Center, direction) >= 0.0f then
-                    let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
-                    if astSphere.Intersects(sphere) then
-                        intersected := Some idxAsteroid
-                        true
+            (fun idxAsteroids ->
+                let check idxAsteroid =
+                    let astPos = asteroids.pos.[idxAsteroid]
+                    if Vector3.Dot(astPos.v - sphere.Center, direction) >= 0.0f then
+                        let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
+                        if astSphere.Intersects(sphere) then
+                            intersected := Some idxAsteroid
+                            true
+                        else
+                            false
                     else
                         false
-                else
-                    false)
+                List.exists check idxAsteroids)
             asteroids.octree
         |> ignore
 
