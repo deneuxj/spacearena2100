@@ -43,6 +43,18 @@ namespace InstancedModel {
 
     #endregion
 
+    public InstancingTechnique InstancingTechnique
+    {
+        get
+        {
+            return this.instancingTechnique;
+        }
+        set
+        {
+            this.instancingTechnique = value;
+        }
+    }
+
     #region Initialization
 
     public InstancedModelRenderer(GraphicsDeviceManager graphics, Model instancedModel) {

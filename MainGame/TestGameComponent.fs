@@ -56,7 +56,7 @@ let newDescription() : Description =
 let newInitialState() : State =
     let pos = MarkedArray [| TypedVector3<m>(0.0f<m>, 0.0f<m>, -50.0f<m>) |]
     let ships : Ships =
-        { headings = MarkedArray [| TypedVector3<1>(0.0f, 0.0f, -1.0f) |]
+        { headings = MarkedArray [| TypedVector3<1>(0.0f, 0.0f, 1.0f) |]
           rights = MarkedArray [| TypedVector3<1>(1.0f, 0.0f, 0.0f) |]
           posClient = pos
           posVisible = pos
@@ -92,13 +92,18 @@ let newInitialState() : State =
 
     { ships = ships ; bullets = bullets ; supplies = supplies ; time = 0<dms> }
 
+open CleverRake.XnaUtils.EvilNull
 
 let newComponent (game : Game) =
     let description = newDescription()
     let initialState = newInitialState()
 
     let content = new Content.ContentManager(game.Services)
-    let gdm = new GraphicsDeviceManager(game)
+    let gdm =
+        match game.Services.GetService(typeof<IGraphicsDeviceManager>) with
+        | NonNull (:? GraphicsDeviceManager as x) -> x
+        | NonNull x -> failwithf "Expected a GraphicsDeviceManager, got %s" (x.GetType().Name)
+        | Null -> failwith "No IGraphicsDeviceManager found"
 
     let shipModel = ref None
     let asteroidModel = ref None
@@ -106,10 +111,15 @@ let newComponent (game : Game) =
     let asteroidRenderer = ref None
 
     let initialize() =
-        let ship = content.Load<Graphics.Model>("ship")
-        let asteroid = content.Load<Graphics.Model>("asteroid")
-        shipRenderer := Some <| new InstancedModelRenderer(gdm, ship)
-        asteroidRenderer := Some <| new InstancedModelRenderer(gdm, asteroid)
+        let ship = content.Load<Graphics.Model>("Content\\ships\\finch")
+        let asteroid = content.Load<Graphics.Model>("Content\\asteroids\\asteroid01")
+        let instancingTechnique =
+            match gdm.GraphicsProfile with
+            | Graphics.GraphicsProfile.HiDef -> InstancingTechnique.HardwareInstancing
+            | Graphics.GraphicsProfile.Reach -> InstancingTechnique.NoInstancing
+            | _ -> failwith "Unknown graphics profile"
+        shipRenderer := Some <| new InstancedModelRenderer(gdm, ship, InstancingTechnique = instancingTechnique)
+        asteroidRenderer := Some <| new InstancedModelRenderer(gdm, asteroid, InstancingTechnique = instancingTechnique)
         shipModel := Some ship
         asteroidModel := Some asteroid
 

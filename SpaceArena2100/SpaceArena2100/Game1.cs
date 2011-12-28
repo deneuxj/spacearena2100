@@ -9,6 +9,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
 
+using SpaceArena2100;
+
 namespace SpaceArena2100
 {
     /// <summary>
@@ -23,6 +25,7 @@ namespace SpaceArena2100
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
+            Components.Add(TestGameComponent.newComponent(this));
         }
 
         /// <summary>
