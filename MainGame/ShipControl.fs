@@ -108,8 +108,8 @@ let getControls settings (pi : PlayerIndex) =
 
     let turnUp =
         match settings.steering with
-        | LeftThumb -> state.ThumbSticks.Left.X
-        | RightThumb -> state.ThumbSticks.Right.X
+        | LeftThumb -> state.ThumbSticks.Left.Y
+        | RightThumb -> state.ThumbSticks.Right.Y
         *
         match settings.pullOrientation with
         | Direct -> 1.0f
@@ -165,6 +165,7 @@ let handlePlayerInputs (dt : float32<s>) localPlayers settings playerIndices (sh
                 let turnRate = shipType.TurnRate
                 let q = Quaternion.CreateFromAxisAngle(up, -controls.turnRight * dt * turnRate)
                 let right = TypedVector3<1>(Vector3.Transform(right.v, q))
+                let heading = TypedVector3<1>(Vector3.Transform(heading.v, q))
 
                 let q = Quaternion.CreateFromAxisAngle(right, controls.turnUp * dt * turnRate)
                 let heading = TypedVector3<1>(Vector3.Transform(heading.v, q))
