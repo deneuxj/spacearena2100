@@ -12,9 +12,7 @@ let ratio = 16.0f / 9.0f
 let nearPlane = 1.0f
 let farPlane = 1e4f
 
-let renderAsteroids (renderer : InstancedModelRenderer) (fieldSize : float32<m>) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (rotations : Quaternion[]) (radii : float32<m>[]) =
-    let V = Vector3(float32 fieldSize, float32 fieldSize, float32 fieldSize)
-
+let renderAsteroids (positions : TypedVector3<m>[]) (rotations : Quaternion[]) (radii : float32<m>[]) (V : TypedVector3<m>) (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
     let view =
         Matrix.CreateLookAt(Vector3.Zero, heading.v, TypedVector.cross3(right, heading).v)
 
@@ -23,7 +21,7 @@ let renderAsteroids (renderer : InstancedModelRenderer) (fieldSize : float32<m>)
 
     let positions =
         positions
-        |> Array.map (fun pos -> (pos - position).v |> WarpCoord.warp V)
+        |> Array.map (fun pos -> (pos - position).v |> WarpCoord.warp V.v)
 
     let computeTransform (pos : Vector3) (rotation : Quaternion) =
         Matrix.CreateFromQuaternion(rotation)

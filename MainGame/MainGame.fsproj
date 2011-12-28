@@ -71,8 +71,8 @@
     <Compile Include="GameState.fs" />
     <Compile Include="ShipControl.fs" />
     <Compile Include="GameStateUpdate.fs" />
-    <Compile Include="TestGameComponent.fs" />
     <Compile Include="Rendering.fs" />
+    <Compile Include="TestGameComponent.fs" />
     <None Include="Script.fsx" />
   </ItemGroup>
   <ItemGroup>
@@ -91,9 +91,9 @@
       <Project>{ebfab7eb-ff0b-4de3-842b-bab06dcd3d42}</Project>
       <Private>True</Private>
     </ProjectReference>
-    <ProjectReference Include="..\InstancedModel\InstancedModel.csproj">
-      <Name>InstancedModel</Name>
-      <Project>{3848532a-dc36-439d-9f91-832e1dbb1537}</Project>
+    <ProjectReference Include="..\InstancedModel\Windows Copy of InstancedModel.csproj">
+      <Name>Windows Copy of InstancedModel</Name>
+      <Project>{0a3ea714-e7fb-4ac2-bf5d-85e4ff7835f9}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>

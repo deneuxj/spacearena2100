@@ -92,6 +92,7 @@ let newInitialState() : State =
 
     { ships = ships ; bullets = bullets ; supplies = supplies ; time = 0<dms> }
 
+
 let newComponent (game : Game) =
     let description = newDescription()
     let initialState = newInitialState()
@@ -104,7 +105,7 @@ let newComponent (game : Game) =
     let shipRenderer = ref None
     let asteroidRenderer = ref None
 
-    let initialize () =
+    let initialize() =
         let ship = content.Load<Graphics.Model>("ship")
         let asteroid = content.Load<Graphics.Model>("asteroid")
         shipRenderer := Some <| new InstancedModelRenderer(gdm, ship)
@@ -120,9 +121,30 @@ let newComponent (game : Game) =
         description.localPlayersIdxs
         |> List.map (fun _ -> ShipControl.defaultSettings)
 
-    let update (gt : GameTime) state = state
-    let compute (gt : GameTime) state = state
-    let draw (gt : GameTime) state = ()
+    let update (gt : GameTime) (state : State) =
+        let me = 0<GPI>
+        let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
-    let comp = new ParallelUpdateDrawGameComponent<State>(game, initialState, initialize, update, compute, draw, dispose)
+        let headings, rights, targetSpeeds, forces =
+            ShipControl.handlePlayerInputs dt description.localPlayersIdxs settings [ PlayerIndex.One ] state.ships description.shipTypes
+        
+        let state' = GameStateUpdate.update dt description [||] forces headings rights state
+
+        (state.ships.posHost.[me],
+         state.ships.headings.[me],
+         state.ships.rights.[me]
+        ),
+        state'
+
+    let compute (gt : GameTime) state = state
+
+    let renderAsteroids = Rendering.renderAsteroids description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
+    
+    let draw (gt : GameTime) (pos, heading, right) =
+        match asteroidRenderer.Value with
+        | Some r ->
+            renderAsteroids r pos heading right
+        | None -> ()
+
+    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, initialState, initialize, update, compute, draw, dispose)
     comp

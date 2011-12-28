@@ -418,8 +418,8 @@ let nextGuid last =
     last + 256<BulletGuid>
 
 /// Update the game state.
-let update hostNumber dt (description : Description) events forces headings rights (state : State) =
-    let guidIsLocal = guidIsLocal hostNumber
+let update dt (description : Description) events forces headings rights (state : State) =
+    let guidIsLocal = guidIsLocal (description.myHostId)
     
     updateDeadReckoning dt state.time state.ships description.shipTypes events
 
