@@ -21,8 +21,9 @@ let computeVerticalForce (drag : float32<N s/m>) (heading : TypedVector3<1>) (ri
 /// Compute forward/backward thrust to apply to meet a given target speed.
 let computeThrust (breakDrag : float32<N s/m>) (thrustDrag : float32<N s/m>) (heading : TypedVector3<1>) (speed : TypedVector3<m/s>) targetSpeed : float32<N> =
     match TypedVector.dot3 (speed, heading) - targetSpeed with
-    | forwardSpeed when forwardSpeed > 0.0f<m/s> -> -breakDrag * forwardSpeed
-    | backwardSpeed -> -thrustDrag * backwardSpeed
+    | relativeSpeed when relativeSpeed > 0.1f<m/s> -> -breakDrag * relativeSpeed
+    | relativeSpeed when relativeSpeed < -0.1f<m/s> -> -thrustDrag * relativeSpeed
+    | _ -> 0.0f<N>
 
 /// Input units: ranges from -1.0 to 1.0
 [<Measure>] type iu
@@ -31,31 +32,31 @@ let computeThrust (breakDrag : float32<N s/m>) (thrustDrag : float32<N s/m>) (he
 type GameState.ShipType
 with
     member this.SideDrag =
-        10.0f<N s/m>
+        100.0f<N s/m>
 
     member this.VerticalDrag =
-        10.0f<N s/m>
+        100.0f<N s/m>
 
     member this.AccelDrag =
-        20.0f<N s/m>
+        400.0f<N s/m>
 
     member this.BreakDrag =
-        10.0f<N s/m>
+        400.0f<N s/m>
 
     member this.TurnRate : float32<rad/s/iu> =
         LanguagePrimitives.Float32WithMeasure(MathHelper.PiOver2)
 
     member this.MaxSideForce =
-        100.0f<N>
+        10000.0f<N>
 
     member this.MaxVerticalForce =
-        100.0f<N>
+        10000.0f<N>
 
     member this.MaxForwardThrust =
-        500.0f<N>
+        50000.0f<N>
 
     member this.MaxBackwardThrust =
-        100.0f<N>
+        10000.0f<N>
 
     member this.MaxForwardSpeed =
         600.0f<m/s>
@@ -177,7 +178,7 @@ let handlePlayerInputs (dt : float32<s>) localPlayers settings playerIndices (sh
                      controls.forwardSpeedAdjust * dt * speedRate)
                     |> clamp -shipType.MaxBackwardSpeed shipType.MaxForwardSpeed
                 
-                yield (heading, right, targetSpeed)
+                yield (heading |> TypedVector.normalize3, right |> TypedVector.normalize3, targetSpeed)
         ]
 
     let forces =
@@ -185,18 +186,19 @@ let handlePlayerInputs (dt : float32<s>) localPlayers settings playerIndices (sh
             for shipIdx, (heading, right, targetSpeed) in List.zip localPlayers hrt do
                 let speed = ships.speeds.[shipIdx]
                 let shipType = shipTypes.[shipIdx]
+                let up = TypedVector.cross3(right, heading)
                 let forceRight =
                     (computeSideForce shipType.SideDrag right speed
                      |> clamp -shipType.MaxSideForce shipType.MaxSideForce)
-                    * TypedVector3<1>(1.0f<1>, 0.0f<1>, 0.0f<1>)
+                    * right
                 let forceUp =
                     (computeVerticalForce shipType.VerticalDrag heading right speed
                      |> clamp -shipType.MaxVerticalForce shipType.MaxVerticalForce)
-                    * TypedVector3<1>(0.0f<1>, 1.0f<1>, 0.0f<1>)
+                    * up
                 let forceForward =
                     (computeThrust shipType.BreakDrag shipType.AccelDrag heading speed targetSpeed
                      |> clamp -shipType.MaxBackwardThrust shipType.MaxForwardThrust)
-                    * TypedVector3<1>(0.0f<1>, 0.0f<1>, 1.0f<1>)
+                    * heading
                 yield forceRight + forceUp + forceForward
         ]
 

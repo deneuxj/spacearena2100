@@ -152,6 +152,7 @@ let newComponent (game : Game) =
         (state.ships.posHost.[me],
          state.ships.headings.[me],
          state.ships.rights.[me],
+         state.ships.speeds.[me],
          computationTime
         ),
         (state, controls)
@@ -160,15 +161,17 @@ let newComponent (game : Game) =
 
     let compute (gt : GameTime) (state, (headings, rights, targetSpeeds, forces)) =
         watch.Restart()
-
+        let state =
+            { state with
+                ships = { state.ships with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
         let state' = GameStateUpdate.update dt description [||] forces headings rights state
 
         state', watch.Elapsed
 
-    let renderAsteroids = Rendering.renderAsteroids description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
+    let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right, computationTime : System.TimeSpan) =
+    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan) =
         match asteroidRenderer.Value, spriteBatch.Value, font.Value with
         | Some r, Some sb, Some font ->
             renderAsteroids r pos heading right
@@ -178,6 +181,7 @@ let newComponent (game : Game) =
                 sb.DrawString(font, sprintf "%A" pos.v, Vector2(100.0f, 130.0f), Color.White)
                 sb.DrawString(font, sprintf "%A" heading.v, Vector2(100.0f, 160.0f), Color.White)
                 sb.DrawString(font, sprintf "%A" right.v, Vector2(100.0f, 190.0f), Color.White)
+                sb.DrawString(font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(100.0f, 220.0f), Color.White)
             finally
                 sb.End()
         | _ -> ()
