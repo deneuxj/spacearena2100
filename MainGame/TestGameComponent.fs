@@ -96,7 +96,7 @@ open CleverRake.XnaUtils.EvilNull
 
 let newComponent (game : Game) =
     let description = newDescription()
-    let initialState = newInitialState()
+    let initialState = newInitialState(), System.TimeSpan.FromSeconds(0.0)
 
     let content = new Content.ContentManager(game.Services)
     let gdm =
@@ -109,10 +109,15 @@ let newComponent (game : Game) =
     let asteroidModel = ref None
     let shipRenderer = ref None
     let asteroidRenderer = ref None
+    let spriteBatch = ref None
+    let font = ref None
 
     let initialize() =
         let ship = content.Load<Graphics.Model>("Content\\ships\\finch")
         let asteroid = content.Load<Graphics.Model>("Content\\asteroids\\asteroid01")
+        let sb = new Graphics.SpriteBatch(gdm.GraphicsDevice)
+        let courier = content.Load<Graphics.SpriteFont>("Content\\courier")
+
         let instancingTechnique =
             match gdm.GraphicsProfile with
             | Graphics.GraphicsProfile.HiDef -> InstancingTechnique.HardwareInstancing
@@ -120,41 +125,62 @@ let newComponent (game : Game) =
             | _ -> failwith "Unknown graphics profile"
         shipRenderer := Some <| new InstancedModelRenderer(gdm, ship, InstancingTechnique = instancingTechnique)
         asteroidRenderer := Some <| new InstancedModelRenderer(gdm, asteroid, InstancingTechnique = instancingTechnique)
+        
         shipModel := Some ship
         asteroidModel := Some asteroid
+        spriteBatch := Some sb
+        font := Some courier
 
     let dispose() =
         content.Dispose()
+        match spriteBatch.Value with
+        | Some sb -> sb.Dispose()
+        | None -> ()
         (gdm :> System.IDisposable).Dispose()
 
     let settings =
         description.localPlayersIdxs
         |> List.map (fun _ -> ShipControl.defaultSettings)
 
-    let update (gt : GameTime) (state : State) =
+    let update (gt : GameTime) (state : State, computationTime) =
         let me = 0<GPI>
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
-        let headings, rights, targetSpeeds, forces =
+        let controls =
             ShipControl.handlePlayerInputs dt description.localPlayersIdxs settings [ PlayerIndex.One ] state.ships description.shipTypes
         
-        let state' = GameStateUpdate.update dt description [||] forces headings rights state
-
         (state.ships.posHost.[me],
          state.ships.headings.[me],
-         state.ships.rights.[me]
+         state.ships.rights.[me],
+         computationTime
         ),
-        state'
+        (state, controls)
 
-    let compute (gt : GameTime) state = state
+    let watch = new System.Diagnostics.Stopwatch()
+
+    let compute (gt : GameTime) (state, (headings, rights, targetSpeeds, forces)) =
+        watch.Restart()
+
+        let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
+        let state' = GameStateUpdate.update dt description [||] forces headings rights state
+
+        state', watch.Elapsed
 
     let renderAsteroids = Rendering.renderAsteroids description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right) =
-        match asteroidRenderer.Value with
-        | Some r ->
+    let draw (gt : GameTime) (pos, heading, right, computationTime : System.TimeSpan) =
+        match asteroidRenderer.Value, spriteBatch.Value, font.Value with
+        | Some r, Some sb, Some font ->
             renderAsteroids r pos heading right
-        | None -> ()
+            try
+                sb.Begin()
+                sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / gt.ElapsedGameTime.TotalSeconds), Vector2(100.0f, 100.0f), Color.White)
+                sb.DrawString(font, sprintf "%A" pos.v, Vector2(100.0f, 130.0f), Color.White)
+                sb.DrawString(font, sprintf "%A" heading.v, Vector2(100.0f, 160.0f), Color.White)
+                sb.DrawString(font, sprintf "%A" right.v, Vector2(100.0f, 190.0f), Color.White)
+            finally
+                sb.End()
+        | _ -> ()
 
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, initialState, initialize, update, compute, draw, dispose)
     comp
