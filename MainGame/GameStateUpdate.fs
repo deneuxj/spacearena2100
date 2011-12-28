@@ -308,7 +308,7 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
     let headings = ships.headings.Content |> Array.copy |> MarkedArray
     let rights = ships.rights.Content |> Array.copy |> MarkedArray
 
-    // Set accelerations of local players
+    // Set accelerations and headings of local players
     let rec work shipIdx localPlayers (forces : TypedVector3<N> list) localHeadings localRights =
         if shipIdx <= accels.Last then
             match localPlayers, forces, localHeadings, localRights with
