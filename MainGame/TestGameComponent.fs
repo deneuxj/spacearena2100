@@ -12,15 +12,45 @@ open SpaceArena2100.GameStateUpdate
 open SpaceArena2100.Units
 
 let newDescription() : Description =
+    let random = new System.Random()
     let fieldSize = 1000.0f<m>
-    let pos = MarkedArray [| TypedVector3<m>(0.0f<m>, 0.0f<m>, 0.0f<m>) |] 
-    let radius = MarkedArray [| 10.0f<m> |]
+    let randomPos() =
+        (double fieldSize
+         *
+         0.5
+         *
+         random.NextDouble()
+         *
+         if random.Next(0, 2) = 0 then 1.0 else -1.0)
+        |> float32
+    
+    let randomVec3() =
+        new Vector3(randomPos(), randomPos(), randomPos())
+
+    let randomRotation() =
+        let vec = randomVec3()
+        vec.Normalize()
+        Quaternion.CreateFromAxisAngle(vec, float32(random.NextDouble()) * MathHelper.Pi)
+
+    let numAsteroids = 1000
+    
+    let pos =
+        Array.init numAsteroids (fun _ -> TypedVector3<m>(randomVec3()))
+        |> MarkedArray
+
+    let radius =
+        Array.init numAsteroids (fun _ -> 1.0f<m> * float32 (10.0 * random.NextDouble() + 5.0))
+        |> MarkedArray
 
     let newBoundingSphere (center : TypedVector3<m>) (radius : float32<m>) =
         new BoundingSphere(center.v, float32 radius)
 
     let boundingSpheres =
         Array.map2 newBoundingSphere pos.Content radius.Content
+        |> MarkedArray
+
+    let rotations =
+        Array.init numAsteroids (fun _ -> randomRotation())
         |> MarkedArray
 
     let boundingSpace =
@@ -38,7 +68,7 @@ let newDescription() : Description =
     let asteroids : Asteroids =
         { pos = pos;
           radius = radius;
-          rotations = MarkedArray [| Quaternion.Identity |];
+          rotations = rotations;
           octree = octree;
           fieldSizes = TypedVector3<m>(1000.0f<m>, 1000.0f<m>,1000.0f<m>);
         }
