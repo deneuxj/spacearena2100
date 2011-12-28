@@ -32,25 +32,25 @@ let computeThrust (breakDrag : float32<N s/m>) (thrustDrag : float32<N s/m>) (he
 type GameState.ShipType
 with
     member this.SideDrag =
-        100.0f<N s/m>
+        5000.0f<N s/m>
 
     member this.VerticalDrag =
-        100.0f<N s/m>
+        5000.0f<N s/m>
 
     member this.AccelDrag =
-        400.0f<N s/m>
+        5000.0f<N s/m>
 
     member this.BreakDrag =
-        400.0f<N s/m>
+        5000.0f<N s/m>
 
     member this.TurnRate : float32<rad/s/iu> =
         LanguagePrimitives.Float32WithMeasure(MathHelper.PiOver2)
 
     member this.MaxSideForce =
-        10000.0f<N>
+        5000.0f<N>
 
     member this.MaxVerticalForce =
-        10000.0f<N>
+        5000.0f<N>
 
     member this.MaxForwardThrust =
         50000.0f<N>
@@ -59,13 +59,13 @@ with
         10000.0f<N>
 
     member this.MaxForwardSpeed =
-        600.0f<m/s>
+        80.0f<m/s>
 
     member this.MaxBackwardSpeed =
         10.0f<m/s>
 
     member this.TargetSpeedRate =
-        200.0f<m/s^2/iu>
+        10.0f<m/s^2/iu>
 
 
 /// Personal setting: invert Y
