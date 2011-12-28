@@ -12,6 +12,7 @@ open SpaceArena2100.GameStateUpdate
 open SpaceArena2100.Units
 
 let newDescription() : Description =
+    let fieldSize = 1000.0f<m>
     let pos = MarkedArray [| TypedVector3<m>(0.0f<m>, 0.0f<m>, 0.0f<m>) |] 
     let radius = MarkedArray [| 10.0f<m> |]
 
@@ -23,7 +24,7 @@ let newDescription() : Description =
         |> MarkedArray
 
     let boundingSpace =
-        new BoundingBox()
+        new BoundingBox(float32 fieldSize / 2.0f * -Vector3.One, float32 fieldSize / 2.0f * Vector3.One)
 
     let _, octree =
         boundingSpheres.Content
