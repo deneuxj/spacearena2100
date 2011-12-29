@@ -113,13 +113,16 @@ let appendBullets bullets1 bullets2 =
 let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
     let warp = warp (asteroids.fieldSizes.v)
     let getIntersection direction (sphere : BoundingSphere) =
+        let spherePos = sphere.Center
+        let sphere = BoundingSphere(warp spherePos, sphere.Radius)
+
         let intersected = ref None
         Octree.checkIntersection
             (fun (bbox : BoundingBox) -> bbox.Intersects(sphere))
             (fun idxAsteroids ->
                 let check idxAsteroid =
                     let astPos = asteroids.pos.[idxAsteroid]
-                    if Vector3.Dot(astPos.v - sphere.Center, direction) >= 0.0f then
+                    if Vector3.Dot(warp (astPos.v - spherePos), direction) >= 0.0f then
                         let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
                         if astSphere.Intersects(sphere) then
                             intersected := Some idxAsteroid
@@ -138,10 +141,10 @@ let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : 
     let courseLength = course.v.Length() * 1.0f<m>
     assert (radius > 0.0f<m>)
     if courseLength > radius then
-        let courseUnit = course.v / float32 courseLength
+        let courseUnit = TypedVector.normalize3 course
         let rec work offset =
             if offset <= courseLength then
-                let sphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit |> warp, float32 radius)
+                let sphere = new BoundingSphere((pos + offset * courseUnit).v, float32 radius)
                 match getIntersection speed.v sphere with
                 | Some idxAsteroid -> Some idxAsteroid
                 | None -> work (offset + radius)
@@ -149,7 +152,7 @@ let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : 
                 None
         work 0.0f<m>
     else
-        let sphere = new BoundingSphere(pos.v |> warp, float32 radius)
+        let sphere = new BoundingSphere(pos.v, float32 radius)
         getIntersection speed.v sphere
 
 
@@ -224,19 +227,17 @@ let computeBulletAsteroidHits guidIsLocal dt (asteroids : Asteroids) (bullets : 
 
 
 /// Compute the change in speed of two spherical colliding bodies.
-let computeImpulse response pos1 speed1 massInv1 pos2 speed2 massInv2 =
-    let checkCollisionSpeeds (pos1 : TypedVector3<m>) (pos2 : TypedVector3<m>) (speed1 : TypedVector3<m/s>) (speed2 : TypedVector3<m/s>) =
-        let d = pos2 - pos1
+let computeImpulse warp response (pos1 : TypedVector3<m>) (speed1 : TypedVector3<m/s>) (massInv1 : float32</kg>) pos2 speed2 massInv2 =
+    let d = TypedVector3<m>(warp (pos2 - pos1).v)
+    let n = d |> TypedVector.normalize3
+
+    let checkCollisionSpeeds =
         Vector3.Dot ((speed2 - speed1).v, d.v) < 0.0f
 
-
-    let collisionFactor
-        response pos1 pos2 vel1 vel2 (massInv1 : float32</kg>) (massInv2 : float32</kg>) =
-    
-        if checkCollisionSpeeds pos1 pos2 vel1 vel2
+    let collisionFactor =    
+        if checkCollisionSpeeds
         then
-            let v12 = vel1 - vel2
-            let n = (pos1 - pos2) |> TypedVector.normalize3
+            let v12 = speed1 - speed2
 
             let x =
                 (1.0f + response) * TypedVector.dot3 (v12, n) /
@@ -245,9 +246,7 @@ let computeImpulse response pos1 speed1 massInv1 pos2 speed2 massInv2 =
         else
             0.0f<kg m/s>
 
-    let n = pos1 - pos2 |> TypedVector.normalize3
-    
-    let s = collisionFactor response pos1 pos2 speed1 speed2 massInv1 massInv2
+    let s = collisionFactor
     
     let imp1 = -s * massInv1 * n
     let imp2 = s * massInv2 * n
@@ -260,7 +259,8 @@ let computeCrashResponse (asteroids : Asteroids) (ships : Ships) (shipTypes : Ma
         let shipType = shipTypes.[shipIdx]
         let impulse, _ =
             computeImpulse
-                (shipType.CollisionRestitution)
+                (WarpCoord.warp asteroids.fieldSizes.v)
+                shipType.CollisionRestitution
                 ships.posVisible.[shipIdx] ships.speeds.[shipIdx] (shipType.InversedMass)
                 asteroids.pos.[astIdx] (TypedVector3<m/s>()) (0.0f</kg>)
         let damage = shipType.Fragility * impulse.Length
@@ -278,8 +278,9 @@ let computeHitResponse (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) 
         let bulletMass = K * r3 * bulletDensity
         let impulse, _ =
             computeImpulse
-                (shipType.CollisionRestitution)
-                ships.posVisible.[shipIdx] ships.speeds.[shipIdx] (shipType.InversedMass)
+                id
+                shipType.CollisionRestitution
+                ships.posVisible.[shipIdx] ships.speeds.[shipIdx] shipType.InversedMass
                 bulletPos bulletSpeed (1.0f / bulletMass)
         let damage = shipType.Fragility * impulse.Length
         (shipIdx, impulse, damage)

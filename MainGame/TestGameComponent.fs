@@ -145,7 +145,7 @@ let newComponent (game : Game) =
 
     let initialize() =
         let ship = content.Load<Graphics.Model>("Content\\ships\\finch")
-        let asteroid = content.Load<Graphics.Model>("Content\\asteroids\\asteroid01")
+        let asteroid = content.Load<Graphics.Model>("Content\\asteroids\\asteroid02")
         let sb = new Graphics.SpriteBatch(gdm.GraphicsDevice)
         let courier = content.Load<Graphics.SpriteFont>("Content\\courier")
 
