@@ -69,7 +69,7 @@ let newDescription() : Description =
         { pos = pos;
           radius = radius;
           rotations = rotations;
-          octree = octree;
+          octree = Octree.freeze octree;
           fieldSizes = fieldSize * TypedVector3<1>(Vector3.One);
         }
 
@@ -248,7 +248,7 @@ let newComponent (game : Game) =
 
             try
                 sb.Begin()
-                sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / gt.ElapsedGameTime.TotalSeconds), Vector2(100.0f, 100.0f), Color.White)
+                sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
 //                sb.DrawString(font, sprintf "%A" pos.v, Vector2(100.0f, 130.0f), Color.White)
 //                sb.DrawString(font, sprintf "%A" heading.v, Vector2(100.0f, 160.0f), Color.White)
 //                sb.DrawString(font, sprintf "%A" right.v, Vector2(100.0f, 190.0f), Color.White)

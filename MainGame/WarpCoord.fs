@@ -2,11 +2,8 @@
 
 open Microsoft.Xna.Framework
 
-let floor x =
-    x |> double |> System.Math.Floor |> float32
-
 /// x -> [-wx/2, +wx/2]
-let warp1 wx (x : float32) =
+let inline warp1 wx (x : float32) =
     let wx = wx / 2.0f
     let x = 0.5f * (wx + x)
     let div = floor (x / wx) 

@@ -48,7 +48,7 @@ type Asteroids =
     { pos : MarkedArray<AstIdx, TypedVector3<m>>;
       radius : MarkedArray<AstIdx, float32<m>>;
       rotations : MarkedArray<AstIdx, Quaternion>;
-      octree : Octree.Node<int<AstIdx> list>;
+      octree : Octree.Node<int<AstIdx> array>;
       fieldSizes : TypedVector3<m> }
     
 /// Data that does not change often during a round.
