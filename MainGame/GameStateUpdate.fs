@@ -135,28 +135,28 @@ let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : 
         let sphere = BoundingSphere(warp spherePos, sphere.Radius)
 
         let intersected = ref None
+        let inline check idxAsteroid =
+            let astPos = asteroids.pos.[idxAsteroid]
+            if Vector3.Dot(warp (astPos.v - spherePos), direction) >= 0.0f then
+                let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
+                if astSphere.Intersects(sphere) then
+                    intersected := Some idxAsteroid
+                    true
+                else
+                    false
+            else
+                false
+
         Octree.checkIntersection
-            (fun (bbox : BoundingBox) -> bbox.Intersects(sphere))
-            (fun idxAsteroids ->
-                let check idxAsteroid =
-                    let astPos = asteroids.pos.[idxAsteroid]
-                    if Vector3.Dot(warp (astPos.v - spherePos), direction) >= 0.0f then
-                        let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
-                        if astSphere.Intersects(sphere) then
-                            intersected := Some idxAsteroid
-                            true
-                        else
-                            false
-                    else
-                        false
-                List.exists check idxAsteroids)
+            (fun (bbox : BoundingBox) -> sphere.Intersects(bbox))
+            (ArrayInlined.exists check)
             asteroids.octree
         |> ignore
 
         !intersected
 
     let course = dt * speed
-    let courseLength = course.v.Length() * 1.0f<m>
+    let courseLength = course.Length
     assert (radius > 0.0f<m>)
     if courseLength > radius then
         let courseUnit = TypedVector.normalize3 course
@@ -164,7 +164,7 @@ let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : 
             if offset <= courseLength then
                 let sphere = new BoundingSphere((pos + offset * courseUnit).v, float32 radius)
                 match getIntersection speed.v sphere with
-                | Some idxAsteroid -> Some idxAsteroid
+                | Some _ as v-> v
                 | None -> work (offset + radius)
             else
                 None
@@ -309,7 +309,7 @@ let computeHitResponse (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) 
 let retireBullets (bullets : Bullets) =
     let filter x =
         x
-        |> ArrayInlined.filterRef (fun y -> y >= 0<dms>) bullets.timeLeft
+        |> ArrayInlined.filterRef (fun y -> y > 0<dms>) bullets.timeLeft
 
     { guids = filter bullets.guids;
       pos = filter bullets.pos;
@@ -430,7 +430,8 @@ let integrateBullets dt (bullets : Bullets) =
         |> Array.map (fun timeLeft -> max 0<dms> (timeLeft - dt))
 
     { bullets with
-        pos = newPos }
+        pos = newPos
+        timeLeft = newTimeLeft }
 
 /// Check if a bullet guid was produced by a specific host.
 let guidIsLocal hostNumber (guid : int<BulletGuid>) =
