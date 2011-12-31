@@ -141,10 +141,14 @@ let getControls settings (pi : PlayerIndex) =
         | Triggers ->
             state.Triggers.Right > 0.5f
 
-    let pwr (x : float32) : float32 = x * x * x
+    let pwr2(x : float32, y : float32) : float32 * float32 =
+        let dist2 = x * x + y * y
+        dist2 * x, dist2 * y
 
-    { turnRight = 1.0f<iu> * pwr turnRight
-      turnUp = 1.0f<iu> * pwr turnUp
+    let turnRight, turnUp = pwr2(turnRight, turnUp)
+
+    { turnRight = 1.0f<iu> * turnRight
+      turnUp = 1.0f<iu> * turnUp
       forwardSpeedAdjust = 1.0f<iu> * forwardSpeedAdjust
       fireRequested = fireRequested }
 
