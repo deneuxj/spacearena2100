@@ -234,7 +234,17 @@ let newComponent (game : Game) =
         match asteroidRenderer.Value, spriteBatch.Value, font.Value, effect.Value with
         | Some r, Some sb, Some font, Some effect ->
             renderAsteroids r pos heading right
-            Rendering.renderBullets gdm.GraphicsDevice effect bulletPos bulletRadii pos heading right
+            Rendering.renderBullets
+                gdm.GraphicsDevice
+                effect
+                (fun V -> effect.View <- V)
+                (fun P -> effect.Projection <- P)
+                (fun W -> effect.World <- W)
+                bulletPos
+                bulletRadii
+                pos
+                heading
+                right
 
             try
                 sb.Begin()

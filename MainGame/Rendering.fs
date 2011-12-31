@@ -41,17 +41,14 @@ module Quads =
     let theQuad = newQuad()
 
     /// Render a number of quads facing the camera.
-    let renderBillboards (dev : GraphicsDevice) (center : TypedVector3<m>) (forward : TypedVector3<1>) (up : TypedVector3<1>) (size : float32<m>) (positions : TypedVector3<m>[]) (effect : Effect) =
-        let transformParameter = effect.Parameters.["World"]
-        let setTransform(T : Matrix) = transformParameter.SetValue(T)
+    let renderBillboards setWorld (dev : GraphicsDevice) (center : TypedVector3<m>) (forward : TypedVector3<1>) (up : TypedVector3<1>) (size : float32<m>) (positions : TypedVector3<m>[]) (effect : Effect) =
+        let S = Matrix.CreateScale(float32 size)
 
         for pos in positions do
-            let billboard = Matrix.CreateBillboard(pos.v, center.v, up.v, System.Nullable(forward.v))
-            let size = Matrix.CreateScale(float32 size)
+            let T = Matrix.CreateBillboard(pos.v, center.v, up.v, System.Nullable(forward.v))
 
-            //let translation = Matrix.CreateTranslation(pos.v)
+            setWorld(S * T)
 
-            setTransform(billboard * size)
             for pass in effect.CurrentTechnique.Passes do
                 pass.Apply()
                 dev.DrawUserIndexedPrimitives<VertexPositionNormalTexture>(PrimitiveType.TriangleList, getVertices theQuad, 0, 4, getIndexes theQuad, 0, 2)
@@ -81,16 +78,19 @@ let renderAsteroids (scaling : float32) (positions : TypedVector3<m>[]) (rotatio
     renderer.Draw(transforms, view, projection)
 
 
-let renderBullets dev effect (positions : TypedVector3<m>[]) (radii : float32<m>[]) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
+let renderBullets dev (effect : Graphics.Effect) setView setProjection setWorld (positions : TypedVector3<m>[]) (radii : float32<m>[]) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
+    let up = TypedVector.cross3(right, heading)
+
     let view =
-        Matrix.CreateLookAt(position.v, position.v + heading.v, TypedVector.cross3(right, heading).v)
+        Matrix.CreateLookAt(position.v, position.v + heading.v, up.v)
 
     let projection =
         Matrix.CreatePerspectiveFieldOfView(fieldOfView, ratio, nearPlane, farPlane)
-
-    let up = TypedVector.cross3(right, heading)
     
-    Quads.renderBillboards dev position heading up 1.0f<m> positions effect
+    setView view
+    setProjection projection
+
+    Quads.renderBillboards setWorld dev position heading up 1.0f<m> positions effect
 
 
 let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) =
