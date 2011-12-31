@@ -16,6 +16,7 @@ module BulletConstants =
     let firePeriod = 0.25f<s>
     let highRateFirePeriod = 0.1f<s>
     let multiFireSpread = MathHelper.ToRadians(5.0f) * 1.0f<rad>
+    let density = 1000.0f<kg/m^3>
 
 /// Synchronization message types sent over the network
 type RemoteEvent =
@@ -200,30 +201,17 @@ let computeHits guidIsLocal (dt : float32<s>) (ships : Ships) shipTypes (bullets
                 let pos = bullets.pos.[bulletIdx]
                 let radius = bullets.radii.[bulletIdx]
                 assert (radius > 0.0f<m>)
-                let course = dt * speed
-                let courseLength = course.v.Length() * 1.0f<m>
-                let courseUnit = course.v / float32 courseLength
 
-                for shipIdx in int ships.posVisible.First .. int ships.posVisible.Last do
-                    let shipIdx = shipIdx * 1<GPI>
+                for shipIdx in ships.posVisible.First .. 1<GPI> .. ships.posVisible.Last do
                     let pos' = ships.posVisible.[shipIdx]
+                    let speed' = ships.speeds.[shipIdx]
                     let shipType : ShipType = MarkedArray.get shipTypes shipIdx
                     let radius' = shipType.BoundingSphereRadius
                     assert (radius' > 0.0f<m>)
-                    let shipSphere = new BoundingSphere(pos'.v, float32 radius')
 
-                    let rec work offset =
-                        if offset <= courseLength then
-                            let bulletSphere = new BoundingSphere(pos.v + (float32 offset) * courseUnit, float32 radius)
-                            if bulletSphere.Intersects(shipSphere) then
-                                Some (shipIdx, guid, pos, speed, radius)
-                            else
-                                work (offset + radius)
-                        else
-                            None
-                    match work 0.0f<m> with
-                    | Some hit -> yield hit
-                    | None -> ()
+                    match TrajectoryCollision.getIntersectionTime (pos.v, speed.v, float32 radius, pos'.v, speed'.v, float32 radius') with
+                    | TrajectoryCollision.IntersectionAt _ -> yield (shipIdx, guid, pos, speed, radius)
+                    | TrajectoryCollision.NoIntersection -> ()
     |]
 
 
@@ -293,7 +281,7 @@ let computeHitResponse (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) 
     let response (shipIdx : int<GPI>, _, bulletPos : TypedVector3<m>, bulletSpeed : TypedVector3<m/s>, bulletRadius : float32<m>) =
         let shipType = shipTypes.[shipIdx]
         let r3 = bulletRadius * bulletRadius * bulletRadius
-        let bulletMass = K * r3 * bulletDensity
+        let bulletMass = K * r3 * BulletConstants.density
         let impulse, _ =
             computeImpulse
                 id

@@ -76,34 +76,34 @@ let newDescription() : Description =
     { numPlayers = 1;
       myHostId = 1;
       playerNames = MarkedArray [| "Tester" |];
-      localPlayersIdxs = [ 0<GPI> ];
+      localPlayersIdxs = [ 0<GPI> ; 1<GPI> ];
       localAiPlayerIdxs = [];
       remotePlayerIdxs = [];
-      shipTypes = MarkedArray [| Bull |];
+      shipTypes = MarkedArray [| Bull ; Bull |];
       gonePlayerIdxs = [];
       asteroids = asteroids;
     }
 
 let newInitialState() : State =
-    let pos = MarkedArray [| TypedVector3<m>(0.0f<m>, 0.0f<m>, -50.0f<m>) |]
+    let pos = MarkedArray [| TypedVector3<m>(0.0f<m>, 0.0f<m>, -50.0f<m>) ; TypedVector3<m>() |]
     let ships : Ships =
-        { headings = MarkedArray [| TypedVector3<1>(0.0f, 0.0f, 1.0f) |]
-          rights = MarkedArray [| TypedVector3<1>(1.0f, 0.0f, 0.0f) |]
+        { headings = MarkedArray [| TypedVector3<1>(0.0f, 0.0f, 1.0f) ; TypedVector3<1>(Vector3.UnitX) |]
+          rights = MarkedArray [| TypedVector3<1>(1.0f, 0.0f, 0.0f) ; TypedVector3<1>(Vector3.UnitY) |]
           posClient = pos
           posVisible = pos
           posHost = pos
-          posLerpT = MarkedArray [| 0.0f |]
-          speeds = MarkedArray [| TypedVector3<m/s>() |]
-          accels = MarkedArray [| TypedVector3<m/s^2>() |]
-          health = MarkedArray [| 1.0f<Health> |]
-          numFastBullets = [ 0 ]
-          numBigBullets = [ 0 ]
-          numMultiFire = [ 0 ]
-          numHighRate = [ 0 ]
-          timeBeforeFire = [ 0<dms> ]
-          timeBeforeRespawn = [ -1<dms> ]
-          localTargetSpeeds = [ 0.0f<m/s> ]
-          scores = MarkedArray [| 0.0f<Points> |]
+          posLerpT = MarkedArray [| 0.0f ; 0.0f |]
+          speeds = MarkedArray [| TypedVector3<m/s>() ; TypedVector3<m/s>() |]
+          accels = MarkedArray [| TypedVector3<m/s^2>() ; TypedVector3<m/s^2>() |]
+          health = MarkedArray [| 1.0f<Health> ; 1.0f<Health> |]
+          numFastBullets = [ 0 ; 0 ]
+          numBigBullets = [ 0 ; 0 ]
+          numMultiFire = [ 0 ; 0 ]
+          numHighRate = [ 0 ; 0 ]
+          timeBeforeFire = [ 0<dms> ; 0<dms> ]
+          timeBeforeRespawn = [ -1<dms> ; -1<dms> ]
+          localTargetSpeeds = [ 0.0f<m/s> ; 0.0f<m/s> ]
+          scores = MarkedArray [| 0.0f<Points> ; 0.0f<Points> |]
         }
 
     let bullets : Bullets =
@@ -187,7 +187,7 @@ let newComponent (game : Game) =
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
         let controls =
-            ShipControl.getAllControls settings [ PlayerIndex.One ]
+            ShipControl.getAllControls settings [ Some PlayerIndex.One ; None ]
 
         let ships, newBullets, lastLocalGuid =
             ShipControl.fireBullets state.bullets.lastLocalGuid description.localPlayersIdxs state.ships controls
@@ -211,7 +211,10 @@ let newComponent (game : Game) =
          ships.speeds.[me],
          computationTime,
          state.bullets.pos,
-         state.bullets.radii
+         state.bullets.radii,
+         state.ships.posVisible.Content,
+         state.ships.headings.Content,
+         state.ships.rights.Content
         )
         ,
         (state, controls, timedEvents)
@@ -230,10 +233,11 @@ let newComponent (game : Game) =
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii) =
-        match asteroidRenderer.Value, spriteBatch.Value, font.Value, effect.Value with
-        | Some r, Some sb, Some font, Some effect ->
+    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipHeadings, shipRights) =
+        match asteroidRenderer.Value, shipRenderer.Value, spriteBatch.Value, font.Value, effect.Value with
+        | Some r, Some r2, Some sb, Some font, Some effect ->
             renderAsteroids r pos heading right
+            
             Rendering.renderBullets
                 gdm.GraphicsDevice
                 effect
@@ -246,6 +250,14 @@ let newComponent (game : Game) =
                 heading
                 right
 
+            Rendering.renderShips
+                r2
+                pos
+                heading
+                right
+                shipPos
+                shipHeadings
+                shipRights
             try
                 sb.Begin()
                 sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)

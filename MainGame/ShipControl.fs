@@ -103,54 +103,62 @@ type Controls =
       fireRequested : bool }
 
 /// Extract device-independent orders from the game pad of a given player index and personal settings.
-let getControls settings (pi : PlayerIndex) =
-    let state = GamePad.GetState(pi)
-    let turnRight =
-        match settings.steering with
-        | LeftThumb -> state.ThumbSticks.Left.X
-        | RightThumb -> state.ThumbSticks.Right.X
+let getControls settings (pi : PlayerIndex option) =
+    match pi with
+    | Some pi ->
+        let state = GamePad.GetState(pi)
+        let turnRight =
+            match settings.steering with
+            | LeftThumb -> state.ThumbSticks.Left.X
+            | RightThumb -> state.ThumbSticks.Right.X
 
-    let turnUp =
-        match settings.steering with
-        | LeftThumb -> state.ThumbSticks.Left.Y
-        | RightThumb -> state.ThumbSticks.Right.Y
-        *
-        match settings.pullOrientation with
-        | Direct -> 1.0f
-        | Inverted -> -1.0f
+        let turnUp =
+            match settings.steering with
+            | LeftThumb -> state.ThumbSticks.Left.Y
+            | RightThumb -> state.ThumbSticks.Right.Y
+            *
+            match settings.pullOrientation with
+            | Direct -> 1.0f
+            | Inverted -> -1.0f
 
-    let forwardSpeedAdjust =
-        match settings.firesWith with
-        | Bumpers ->
-            (state.Triggers.Right - state.Triggers.Left)
-        | Triggers ->
-            if state.Buttons.RightShoulder = ButtonState.Pressed then
-                1.0f
-            else
-                0.0f
-            -
-            if state.Buttons.LeftShoulder = ButtonState.Pressed then
-                1.0f
-            else
-                0.0f
+        let forwardSpeedAdjust =
+            match settings.firesWith with
+            | Bumpers ->
+                (state.Triggers.Right - state.Triggers.Left)
+            | Triggers ->
+                if state.Buttons.RightShoulder = ButtonState.Pressed then
+                    1.0f
+                else
+                    0.0f
+                -
+                if state.Buttons.LeftShoulder = ButtonState.Pressed then
+                    1.0f
+                else
+                    0.0f
 
-    let fireRequested =
-        match settings.firesWith with
-        | Bumpers ->
-            state.Buttons.RightShoulder = ButtonState.Pressed
-        | Triggers ->
-            state.Triggers.Right > 0.5f
+        let fireRequested =
+            match settings.firesWith with
+            | Bumpers ->
+                state.Buttons.RightShoulder = ButtonState.Pressed
+            | Triggers ->
+                state.Triggers.Right > 0.5f
 
-    let pwr2(x : float32, y : float32) : float32 * float32 =
-        let dist2 = x * x + y * y
-        dist2 * x, dist2 * y
+        let pwr2(x : float32, y : float32) : float32 * float32 =
+            let dist2 = x * x + y * y
+            dist2 * x, dist2 * y
 
-    let turnRight, turnUp = pwr2(turnRight, turnUp)
+        let turnRight, turnUp = pwr2(turnRight, turnUp)
 
-    { turnRight = 1.0f<iu> * turnRight
-      turnUp = 1.0f<iu> * turnUp
-      forwardSpeedAdjust = 1.0f<iu> * forwardSpeedAdjust
-      fireRequested = fireRequested }
+        { turnRight = 1.0f<iu> * turnRight
+          turnUp = 1.0f<iu> * turnUp
+          forwardSpeedAdjust = 1.0f<iu> * forwardSpeedAdjust
+          fireRequested = fireRequested }
+    
+    | None ->
+        { turnRight = 0.0f<iu>
+          turnUp = 0.0f<iu>
+          forwardSpeedAdjust = 0.0f<iu>
+          fireRequested = true }
 
 /// Extract controls from all local players' game pads.
 let getAllControls settings playerIndices =
