@@ -1,5 +1,6 @@
 syntax: glob
 SpaceArena2100/SpaceArena2100/SpaceArena2100.csproj.Debug.cachefile
+SpaceArena2100/SpaceArena2100/SpaceArena2100.csproj.Release.cachefile
 syntax: regexp
 [.]suo$
 /bin/
