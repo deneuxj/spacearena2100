@@ -69,8 +69,8 @@
     <Compile Include="Units.fs" />
     <Compile Include="WarpCoord.fs" />
     <Compile Include="GameState.fs" />
-    <Compile Include="ShipControl.fs" />
     <Compile Include="GameStateUpdate.fs" />
+    <Compile Include="ShipControl.fs" />
     <Compile Include="Rendering.fs" />
     <Compile Include="TestGameComponent.fs" />
     <None Include="Script.fsx" />

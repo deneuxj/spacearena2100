@@ -7,6 +7,9 @@ open CleverRake.XnaUtils
 open CleverRake.XnaUtils.QuaternionExtensions
 open CleverRake.XnaUtils.Units
 
+open SpaceArena2100.Units
+open SpaceArena2100.GameStateUpdate
+
 /// Compute the side force to apply to nullify lateral velocity.
 let computeSideForce (drag : float32<N s/m>) (right : TypedVector3<1>) (speed : TypedVector3<m/s>) : float32<N> =
     let sideSpeed = TypedVector.dot3 (speed, right)
@@ -145,11 +148,12 @@ let getControls settings (pi : PlayerIndex) =
       forwardSpeedAdjust = 1.0f<iu> * forwardSpeedAdjust
       fireRequested = fireRequested }
 
-/// Given inputs from local players, compute new heading, right vector, target speed and jet forces.
-let handlePlayerInputs (dt : float32<s>) localPlayers settings playerIndices (ships : GameState.Ships) (shipTypes : MarkedArray<GameState.GPI, GameState.ShipType>) =
-    let controls =
-        List.map2 getControls settings playerIndices
+/// Extract controls from all local players' game pads.
+let getAllControls settings playerIndices =
+    List.map2 getControls settings playerIndices
 
+/// Given inputs from local players, compute new heading, right vector, target speed and jet forces.
+let handlePlayerInputs (dt : float32<s>) localPlayers (ships : GameState.Ships) (shipTypes : MarkedArray<GameState.GPI, GameState.ShipType>) (controls : Controls list) =
     let clamp low hi x =
         x
         |> max low
@@ -205,3 +209,120 @@ let handlePlayerInputs (dt : float32<s>) localPlayers settings playerIndices (sh
     let headings, rights, targetSpeeds = List.unzip3 hrt
 
     headings, rights, targetSpeeds, forces
+
+let stop() =
+    ()
+
+/// Check which controls are requesting fire, validate those that are ready to fire, and return data needed to create new bullets.
+/// This data is composed of:
+/// - new ship states with updated special bullet counts,
+/// - tuples to construct RemoteEvents, and
+/// - the updated last bullet GUID.
+let fireBullets lastBulletId localPlayers (ships : GameState.Ships) (controls : Controls list) =
+    let rec work lastBulletId localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire =
+        match localPlayers, controls, timeLeft, numBigBullets, numFastBullets, numHiRateBullets, numMultiFire with
+        | player :: localPlayers, control :: controls, t :: timeLeft, bb :: numBigBullets, fb :: numFastBullets, hrb :: numHiRateBullets, mf :: numMultiFire ->
+            let fireAuthorized =
+                control.fireRequested && t <= 0<dms>
+
+            let nextLastBulletId =
+                if fireAuthorized then
+                    nextGuid lastBulletId
+                else
+                    lastBulletId
+                
+            let ret =
+                if fireAuthorized then
+                    stop()
+                    let isBig = bb > 0
+                    let isFast = fb > 0
+                    let isHiRate = hrb > 0
+                    let isMultiFire = mf > 0
+                    
+                    let guid = nextLastBulletId
+                    let radius =
+                        if isBig then BulletConstants.bigRadius else BulletConstants.radius
+                    let speed =
+                        if isFast then BulletConstants.fastSpeed else BulletConstants.speed
+                    let heading = ships.headings.[player]
+                    let dist0 = 5.0f<m>
+                    let pos = ships.posClient.[player] + dist0 * heading
+
+                    let newBullets =
+                        if isMultiFire then
+                            let up = TypedVector.cross3(ships.rights.[player], heading)
+                            let rot = Quaternion.CreateFromAxisAngle(up, BulletConstants.multiFireSpread)
+                            let shipSpeed = ships.speeds.[player]
+                            [(guid, player, radius, pos, shipSpeed + speed * TypedVector3<1>(Vector3.Transform(heading.v, rot)))
+                             (guid, player, radius, pos, shipSpeed + speed * TypedVector3<1>(Vector3.Transform(heading.v, -rot)))
+                             (guid, player, radius, pos, shipSpeed + speed * heading)
+                            ]
+                        else
+                            let speed = ships.speeds.[player] + speed * heading
+                            [(guid, player, radius, pos, speed)]
+                    (
+                        ((if isHiRate then dmsFromS BulletConstants.highRateFirePeriod else dmsFromS BulletConstants.firePeriod),
+                         (if isBig then bb - 1 else bb),
+                         (if isFast then fb - 1 else fb),
+                         (if isHiRate then hrb - 1 else hrb),
+                         (if isMultiFire then mf - 1 else mf)),
+                        newBullets
+                    )
+                else
+                    (
+                        (t, bb, fb, hrb, mf),
+                        []
+                    )
+
+            ret :: work nextLastBulletId localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire
+        | [], [], [], [], [], [], [] -> []
+        | _ -> failwith "List lengths don't match"
+
+    let tmp = 
+        work lastBulletId localPlayers controls ships.timeBeforeFire ships.numBigBullets ships.numFastBullets ships.numHighRate ships.numMultiFire
+
+    let timeLeft =
+        tmp
+        |> List.map (fun ((x, _, _, _, _), _) -> x)
+
+    let numBigBullets =
+        tmp
+        |> List.map (fun ((_, x, _, _, _), _) -> x)
+
+    let numFastBullets =
+        tmp
+        |> List.map (fun ((_, _, x, _, _), _) -> x)
+
+    let numHighRate =
+        tmp
+        |> List.map (fun ((_, _, _, x, _), _) -> x)
+
+    let numMultiFire =
+        tmp
+        |> List.map (fun ((_, _, _, _, x), _) -> x)
+
+    let newBulletsData =
+        tmp
+        |> List.map snd
+        |> List.concat
+
+    let lastGuid =
+        if List.isEmpty newBulletsData then
+            lastBulletId
+        else
+            let lastGuid, _, _, _, _ =
+                newBulletsData
+                |> List.maxBy (fun (x, _, _, _, _) -> x)
+            lastGuid
+
+    { ships with
+        timeBeforeFire = timeLeft
+        numBigBullets = numBigBullets
+        numFastBullets = numFastBullets
+        numHighRate = numHighRate
+        numMultiFire = numMultiFire
+    }
+    ,
+    newBulletsData
+    ,
+    lastGuid

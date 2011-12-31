@@ -96,7 +96,8 @@ type Bullets =
       timeLeft : int<dms>[];
       speeds : TypedVector3<m/s>[];
       radii : float32<m>[];
-      owners : int<GPI>[] }
+      owners : int<GPI>[];
+      lastLocalGuid : int<BulletGuid> }
 
 type Supplies =
     { pos : MarkedArray<GSI, Vector3>;

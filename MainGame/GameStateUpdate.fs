@@ -7,6 +7,16 @@ open Units
 open GameState
 open WarpCoord
 
+module BulletConstants =
+    let speed = 300.0f<m/s>
+    let fastSpeed = 500.0f<m/s>
+    let lifetime = 2.0f<s>
+    let radius = 0.2f<m>
+    let bigRadius = 0.3f<m>
+    let firePeriod = 0.25f<s>
+    let highRateFirePeriod = 0.1f<s>
+    let multiFireSpread = MathHelper.ToRadians(5.0f) * 1.0f<rad>
+
 /// Synchronization message types sent over the network
 type RemoteEvent =
     | DamageAndImpulse of int<GPI> * float32<Health> * TypedVector3<m/s> // Ship idx, damage, impulse
@@ -22,7 +32,7 @@ type TimedRemoteEvent =
       event : RemoteEvent }
 
 /// Create new bullets according to BulletFired events
-let createBullets now (bullets : Bullets) events =
+let createBullets guidIsLocal now lastLocalGuid events =
     let events =
         events
         |> Array.filter (function { event = BulletFired _ } -> true | _ -> false)
@@ -48,15 +58,21 @@ let createBullets now (bullets : Bullets) events =
         |> Array.map (function { event = BulletFired(_, _, _, _, speed) } -> speed | _ -> failwith "Unreachable")
 
     let newTimeLeft =
+        let lifeLength = BulletConstants.lifetime |> dmsFromS
         events
-        |> Array.map (function { time = t0 } -> now - t0)
+        |> Array.map (function { time = t0 } -> lifeLength - (now - t0))
 
-    { guids = Array.append bullets.guids newGuids;
-      owners = Array.append bullets.owners newOwners;
-      radii = Array.append bullets.radii newRadii;
-      speeds = Array.append bullets.speeds newSpeeds;
-      timeLeft = Array.append bullets.timeLeft newTimeLeft;
-      pos = Array.append bullets.pos newPos }
+    let lastLocalGuid =
+        newGuids
+        |> Array.fold (fun lastGuid guid -> if guidIsLocal guid && guid > lastGuid then guid else lastGuid) lastLocalGuid
+
+    { guids = newGuids;
+      owners = newOwners;
+      radii = newRadii;
+      speeds = newSpeeds;
+      timeLeft = newTimeLeft;
+      pos = newPos;
+      lastLocalGuid = lastLocalGuid }
 
 /// Mutate speed and health arrays.
 let applyDamageAndImpulse speeds health (damagesAndImpulses : (int<GPI> * TypedVector3<m/s> * float32<Health>)[]) =
@@ -96,7 +112,8 @@ let destroyBullets bullets (guidsToRetire : Set<int<BulletGuid>>) =
       radii = newRadii;
       speeds = newSpeeds;
       timeLeft = newTimeLeft;
-      pos = newPos }
+      pos = newPos;
+      lastLocalGuid = bullets.lastLocalGuid }
 
 
 /// Merge two bullet groups
@@ -106,7 +123,8 @@ let appendBullets bullets1 bullets2 =
       radii = Array.append bullets1.radii bullets2.radii;
       speeds = Array.append bullets1.speeds bullets2.speeds;
       timeLeft = Array.append bullets1.timeLeft bullets2.timeLeft;
-      pos = Array.append bullets1.pos bullets2.pos }
+      pos = Array.append bullets1.pos bullets2.pos
+      lastLocalGuid = max bullets1.lastLocalGuid bullets2.lastLocalGuid }
 
 
 /// Check intersection between a moving sphere and asteroids
@@ -291,38 +309,41 @@ let computeHitResponse (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) 
 let retireBullets (bullets : Bullets) =
     let filter x =
         x
-        |> ArrayInlined.filterRef ((>=) 0<dms>) bullets.timeLeft
+        |> ArrayInlined.filterRef (fun y -> y >= 0<dms>) bullets.timeLeft
 
     { guids = filter bullets.guids;
       pos = filter bullets.pos;
       speeds = filter bullets.speeds;
       radii = filter bullets.radii;
       owners = filter bullets.owners;
-      timeLeft = filter bullets.timeLeft }
+      timeLeft = filter bullets.timeLeft;
+      lastLocalGuid = bullets.lastLocalGuid }
 
 /// Update the position and speed of all ships.
 let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : TypedVector3<N> list) localHeadings localRights (localPlayers : int<GPI> list): Ships =
     let inline getInversedMass shipIdx =
         shipTypes.[shipIdx].InversedMass
 
+    let dtInDms = intFromFloat32 (dt * dmsPerS_f)
+
     let accels = ships.accels.Content |> Array.copy |> MarkedArray
     let headings = ships.headings.Content |> Array.copy |> MarkedArray
     let rights = ships.rights.Content |> Array.copy |> MarkedArray
 
     // Set accelerations and headings of local players
-    let rec work shipIdx localPlayers (forces : TypedVector3<N> list) localHeadings localRights =
-        if shipIdx <= accels.Last then
-            match localPlayers, forces, localHeadings, localRights with
-            | head :: restPlayers, force :: restForces, heading :: restHeadings, right :: restRights when head = shipIdx ->
-                let accel : TypedVector3<m/s^2> = getInversedMass shipIdx * force
-                accels.[shipIdx] <- accel
-                headings.[shipIdx] <- heading
-                rights.[shipIdx] <- right
-                work (shipIdx + 1<GPI>) restPlayers restForces restHeadings restRights
-            | _ ->
-                work (shipIdx + 1<GPI>) localPlayers forces localHeadings localRights
+    let rec work localPlayers (forces : TypedVector3<N> list) localHeadings localRights =
+        match localPlayers, forces, localHeadings, localRights with
+        | shipIdx :: restPlayers, force :: restForces, heading :: restHeadings, right :: restRights ->
+            let accel : TypedVector3<m/s^2> = getInversedMass shipIdx * force
+            accels.[shipIdx] <- accel
+            headings.[shipIdx] <- heading
+            rights.[shipIdx] <- right
+            work restPlayers restForces restHeadings restRights
+        | [], [], [], [] ->
+            ()
+        | _ -> failwith "List lengths mismatch"
 
-    work 0<GPI> localPlayers forces localHeadings localRights
+    work localPlayers forces localHeadings localRights
 
     let speeds2 =
         Array.mapi2
@@ -360,7 +381,8 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
         speeds = MarkedArray speeds2
         posClient = MarkedArray posClient
         posHost = MarkedArray posHost
-        posVisible = MarkedArray posVisible }
+        posVisible = MarkedArray posVisible
+        timeBeforeFire = ships.timeBeforeFire |> List.map (fun x -> x - dtInDms) }
 
 /// Mutate posHost and the interpolation parameter posLerpT depending on sync events.
 let updateDeadReckoning frameDt (now : int<dms>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (events : TimedRemoteEvent[]) =
@@ -403,9 +425,9 @@ let integrateBullets dt (bullets : Bullets) =
         Array.map2 (fun pos speed -> pos + dt * speed) bullets.pos bullets.speeds
 
     let newTimeLeft =
-        let dt = dmsPerS_f * dt |> intFromFloat32
+        let dt = dmsFromS dt
         bullets.timeLeft
-        |> Array.map (fun timeLeft -> timeLeft - dt)
+        |> Array.map (fun timeLeft -> max 0<dms> (timeLeft - dt))
 
     { bullets with
         pos = newPos }
@@ -418,13 +440,24 @@ let guidIsLocal hostNumber (guid : int<BulletGuid>) =
 let nextGuid last =
     last + 256<BulletGuid>
 
+/// Get the first bullet guid of a given host.
+let firstGuid hostNumber = 1<BulletGuid> * hostNumber
+
+let stop() =
+    ()
+
 /// Update the game state.
 let update dt (description : Description) events forces headings rights (state : State) =
+    if events |> Array.filter (function { event = BulletFired _ } -> true | _ -> false) |> Array.isEmpty |> not then
+        stop()
+
     let guidIsLocal = guidIsLocal (description.myHostId)
     
     updateDeadReckoning dt state.time state.ships description.shipTypes events
 
-    let bullets = createBullets state.time state.bullets events
+    let bullets =
+        createBullets guidIsLocal state.time state.bullets.lastLocalGuid events
+        |> appendBullets state.bullets
     
     let bulletHitsOnShips = computeHits guidIsLocal dt state.ships description.shipTypes state.bullets
     let bulletHitsOnAsteroids = computeBulletAsteroidHits guidIsLocal dt description.asteroids state.bullets
@@ -471,5 +504,5 @@ let update dt (description : Description) events forces headings rights (state :
     { state with
         ships = ships
         bullets = bullets
-        time = state.time + intFromFloat32 (dmsPerS_f * dt)
+        time = state.time + dmsFromS dt
     }

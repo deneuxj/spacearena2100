@@ -113,6 +113,7 @@ let newInitialState() : State =
           speeds = [||]
           radii = [||]
           owners = [||]
+          lastLocalGuid = firstGuid 1
         }
 
     let supplies : Supplies =
@@ -142,12 +143,16 @@ let newComponent (game : Game) =
     let asteroidRenderer = ref None
     let spriteBatch = ref None
     let font = ref None
+    let effect = ref None
 
     let initialize() =
         let ship = content.Load<Graphics.Model>("Content\\ships\\finch")
         let asteroid = content.Load<Graphics.Model>("Content\\asteroids\\asteroid02")
         let sb = new Graphics.SpriteBatch(gdm.GraphicsDevice)
         let courier = content.Load<Graphics.SpriteFont>("Content\\courier")
+        let fx =
+            let texture = content.Load<Graphics.Texture2D>("Content\\fireball")
+            new Graphics.BasicEffect(gdm.GraphicsDevice, TextureEnabled = true, Texture = texture)
 
         let instancingTechnique =
             match gdm.GraphicsProfile with
@@ -161,11 +166,15 @@ let newComponent (game : Game) =
         asteroidModel := Some asteroid
         spriteBatch := Some sb
         font := Some courier
+        effect := Some fx
 
     let dispose() =
-        content.Dispose()
+        content.Unload()
         match spriteBatch.Value with
         | Some sb -> sb.Dispose()
+        | None -> ()
+        match effect.Value with
+        | Some fx -> fx.Dispose()
         | None -> ()
         (gdm :> System.IDisposable).Dispose()
 
@@ -178,40 +187,61 @@ let newComponent (game : Game) =
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
         let controls =
-            ShipControl.handlePlayerInputs dt description.localPlayersIdxs settings [ PlayerIndex.One ] state.ships description.shipTypes
-        
-        (state.ships.posHost.[me],
-         state.ships.headings.[me],
-         state.ships.rights.[me],
-         state.ships.speeds.[me],
-         computationTime
-        ),
-        (state, controls)
+            ShipControl.getAllControls settings [ PlayerIndex.One ]
+
+        let ships, newBullets, lastLocalGuid =
+            ShipControl.fireBullets state.bullets.lastLocalGuid description.localPlayersIdxs state.ships controls
+
+        let controls =
+            ShipControl.handlePlayerInputs dt description.localPlayersIdxs ships description.shipTypes controls
+
+        let state =
+            { state with
+                ships = ships
+                bullets = { state.bullets with lastLocalGuid = lastLocalGuid } }
+
+        let timedEvents =
+            newBullets
+            |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
+            |> Array.ofList
+
+        (ships.posHost.[me],
+         ships.headings.[me],
+         ships.rights.[me],
+         ships.speeds.[me],
+         computationTime,
+         state.bullets.pos,
+         state.bullets.radii
+        )
+        ,
+        (state, controls, timedEvents)
 
     let watch = new System.Diagnostics.Stopwatch()
 
-    let compute (gt : GameTime) (state, (headings, rights, targetSpeeds, forces)) =
+    let compute (gt : GameTime) (state : GameState.State, (headings, rights, targetSpeeds, forces), timedEvents) =
         watch.Restart()
         let state =
             { state with
                 ships = { state.ships with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
-        let state' = GameStateUpdate.update dt description [||] forces headings rights state
+        let state' = GameStateUpdate.update dt description timedEvents forces headings rights state
 
         state', watch.Elapsed
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan) =
-        match asteroidRenderer.Value, spriteBatch.Value, font.Value with
-        | Some r, Some sb, Some font ->
+    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii) =
+        match asteroidRenderer.Value, spriteBatch.Value, font.Value, effect.Value with
+        | Some r, Some sb, Some font, Some effect ->
             renderAsteroids r pos heading right
+            Rendering.renderBullets gdm.GraphicsDevice effect bulletPos bulletRadii pos heading right
+
             try
                 sb.Begin()
                 sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / gt.ElapsedGameTime.TotalSeconds), Vector2(100.0f, 100.0f), Color.White)
-                sb.DrawString(font, sprintf "%A" pos.v, Vector2(100.0f, 130.0f), Color.White)
-                sb.DrawString(font, sprintf "%A" heading.v, Vector2(100.0f, 160.0f), Color.White)
-                sb.DrawString(font, sprintf "%A" right.v, Vector2(100.0f, 190.0f), Color.White)
+//                sb.DrawString(font, sprintf "%A" pos.v, Vector2(100.0f, 130.0f), Color.White)
+//                sb.DrawString(font, sprintf "%A" heading.v, Vector2(100.0f, 160.0f), Color.White)
+//                sb.DrawString(font, sprintf "%A" right.v, Vector2(100.0f, 190.0f), Color.White)
                 sb.DrawString(font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(100.0f, 220.0f), Color.White)
             finally
                 sb.End()
