@@ -13,7 +13,7 @@ open SpaceArena2100.Units
 
 let newDescription() : Description =
     let random = new System.Random()
-    let fieldSize = 1000.0f<m>
+    let fieldSize = 5000.0f<m>
     let randomPos() =
         (double fieldSize
          *
@@ -70,7 +70,7 @@ let newDescription() : Description =
           radius = radius;
           rotations = rotations;
           octree = octree;
-          fieldSizes = TypedVector3<m>(1000.0f<m>, 1000.0f<m>,1000.0f<m>);
+          fieldSizes = fieldSize * TypedVector3<1>(Vector3.One);
         }
 
     { numPlayers = 1;

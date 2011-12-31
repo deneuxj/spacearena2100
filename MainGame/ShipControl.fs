@@ -50,25 +50,25 @@ with
         LanguagePrimitives.Float32WithMeasure(MathHelper.PiOver2)
 
     member this.MaxSideForce =
-        5000.0f<N>
+        15000.0f<N>
 
     member this.MaxVerticalForce =
-        5000.0f<N>
+        15000.0f<N>
 
     member this.MaxForwardThrust =
-        50000.0f<N>
+        150000.0f<N>
 
     member this.MaxBackwardThrust =
-        10000.0f<N>
+        30000.0f<N>
 
     member this.MaxForwardSpeed =
-        80.0f<m/s>
+        240.0f<m/s>
 
     member this.MaxBackwardSpeed =
-        10.0f<m/s>
+        50.0f<m/s>
 
     member this.TargetSpeedRate =
-        10.0f<m/s^2/iu>
+        30.0f<m/s^2/iu>
 
 
 /// Personal setting: invert Y
