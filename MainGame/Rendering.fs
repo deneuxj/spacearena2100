@@ -74,6 +74,7 @@ let renderAsteroids (scaling : float32) (positions : TypedVector3<m>[]) (rotatio
 
     let transforms =
         ArrayInlined.map3 computeTransform positions rotations radii
+        |> ArrayInlined.filterRef (fun (pos : Vector3) -> Vector3.Dot(pos, heading.v) >= 0.0f) positions
 
     renderer.Draw(transforms, view, projection)
 

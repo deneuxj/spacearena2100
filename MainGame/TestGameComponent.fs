@@ -32,7 +32,7 @@ let newDescription() : Description =
         vec.Normalize()
         Quaternion.CreateFromAxisAngle(vec, float32(random.NextDouble()) * MathHelper.Pi)
 
-    let numAsteroids = 1000
+    let numAsteroids = 2000
     
     let pos =
         Array.init numAsteroids (fun _ -> TypedVector3<m>(randomVec3()))
