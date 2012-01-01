@@ -71,6 +71,7 @@
     <Compile Include="GameState.fs" />
     <Compile Include="GameStateUpdate.fs" />
     <Compile Include="ShipControl.fs" />
+    <Compile Include="AiSteering.fs" />
     <Compile Include="Rendering.fs" />
     <Compile Include="TestGameComponent.fs" />
     <None Include="Script.fsx" />

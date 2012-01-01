@@ -77,7 +77,7 @@ let newDescription() : Description =
       myHostId = 1;
       playerNames = MarkedArray [| "Tester" |];
       localPlayersIdxs = [ 0<GPI> ; 1<GPI> ];
-      localAiPlayerIdxs = [];
+      localAiPlayerIdxs = [ 1<GPI> ];
       remotePlayerIdxs = [];
       shipTypes = MarkedArray [| Bull ; Bull |];
       gonePlayerIdxs = [];
@@ -184,10 +184,30 @@ let newComponent (game : Game) =
 
     let update (gt : GameTime) (state : State, computationTime) =
         let me = 0<GPI>
+        let ai = 1<GPI>
+
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
-        let controls =
+        let humanControls =
             ShipControl.getAllControls settings [ Some PlayerIndex.One ; None ]
+
+        let aiControls =
+            description.localAiPlayerIdxs
+            |> List.map (AiSteering.steer state.ships)
+
+        let rec work humanControls aiControls humanPlayers aiPlayers =
+            match humanControls, aiControls, humanPlayers, aiPlayers with
+            | [], _, _, _ -> aiControls
+            | _, [], _, _ -> humanControls
+            | hc :: restHC, aic :: restAIC, hidx :: restHIDX, aiidx :: restAIIDX ->
+                if hidx = aiidx then
+                    aic :: work restHC restAIC restHIDX restAIIDX
+                else
+                    hc :: work restHC aiControls restHIDX aiPlayers
+            | _ -> failwith "Missing data"
+
+        let controls =
+            work humanControls aiControls description.localPlayersIdxs description.localAiPlayerIdxs
 
         let ships, newBullets, lastLocalGuid =
             ShipControl.fireBullets state.bullets.lastLocalGuid description.localPlayersIdxs state.ships controls
@@ -205,10 +225,10 @@ let newComponent (game : Game) =
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
             |> Array.ofList
 
-        (ships.posHost.[me],
-         ships.headings.[me],
-         ships.rights.[me],
-         ships.speeds.[me],
+        (ships.posHost.[ai],
+         ships.headings.[ai],
+         ships.rights.[ai],
+         ships.speeds.[ai],
          computationTime,
          state.bullets.pos,
          state.bullets.radii,
