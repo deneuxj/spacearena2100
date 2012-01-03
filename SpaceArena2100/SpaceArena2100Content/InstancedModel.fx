@@ -89,7 +89,6 @@ float4 PixelShaderFunction(VertexShaderOutput input) : COLOR0
     return tex2D(Sampler, input.TextureCoordinate) * input.Color;
 }
 
-/*
 // Hardware instancing technique.
 technique HardwareInstancing
 {
@@ -99,7 +98,6 @@ technique HardwareInstancing
         PixelShader = compile ps_3_0 PixelShaderFunction();
     }
 }
-*/
 
 // For rendering without instancing.
 technique NoInstancing
