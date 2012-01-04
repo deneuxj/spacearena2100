@@ -131,48 +131,63 @@ let appendBullets bullets1 bullets2 =
 /// Check intersection between a moving sphere and asteroids
 let intersectSphereVsAsteroids (dt : float32<s>) (asteroids : Asteroids) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) (radius : float32<m>) =
     let warp = warp (asteroids.fieldSizes.v)
-    let getIntersection direction (sphere : BoundingSphere) =
-        let spherePos = sphere.Center
-        let sphere = BoundingSphere(warp spherePos, sphere.Radius)
-
-        let intersected = ref None
-        let inline check idxAsteroid =
-            let astPos = asteroids.pos.[idxAsteroid]
-            if Vector3.Dot(warp (astPos.v - spherePos), direction) >= 0.0f then
-                let astSphere = new BoundingSphere(astPos.v, float32 asteroids.radius.[idxAsteroid])
-                if astSphere.Intersects(sphere) then
-                    intersected := Some idxAsteroid
-                    true
-                else
-                    false
-            else
-                false
-
-        Octree.checkIntersection
-            (fun (bbox : BoundingBox) -> sphere.Intersects(bbox))
-            (ArrayInlined.exists check)
-            asteroids.octree
-        |> ignore
-
-        !intersected
-
+    let wpos = TypedVector3<m>(warp pos.v)
     let course = dt * speed
-    let courseLength = course.Length
     assert (radius > 0.0f<m>)
-    if courseLength > radius then
-        let courseUnit = TypedVector.normalize3 course
-        let rec work offset =
-            if offset <= courseLength then
-                let sphere = new BoundingSphere((pos + offset * courseUnit).v, float32 radius)
-                match getIntersection speed.v sphere with
-                | Some _ as v-> v
-                | None -> work (offset + radius)
-            else
-                None
-        work 0.0f<m>
-    else
-        let sphere = new BoundingSphere(pos.v, float32 radius)
-        getIntersection speed.v sphere
+
+    let p1 =
+        TypedVector3<m>(
+            (if speed.X > 0.0f<m/s> then
+                wpos.X - radius
+             else
+                wpos.X + radius),
+            (if speed.Y > 0.0f<m/s> then
+                wpos.Y - radius
+             else
+                wpos.Y + radius),
+            (if speed.Z > 0.0f<m/s> then
+                wpos.Z - radius
+             else
+                wpos.Z + radius)
+        )
+
+    let endPos = wpos + course
+    let p2 =
+        TypedVector3<m>(
+            (if speed.X > 0.0f<m/s> then
+                endPos.X + radius
+             else
+                endPos.X - radius),
+            (if speed.Y > 0.0f<m/s> then
+                endPos.Y + radius
+             else
+                endPos.Y - radius),
+            (if speed.Z > 0.0f<m/s> then
+                endPos.Z + radius
+             else
+                endPos.Z - radius)
+        )
+
+    let travelBox = Octree.mkBBox p1.v p2.v
+
+    let check idxAsteroid =
+        let astPos = asteroids.pos.[idxAsteroid]
+        if Vector3.Dot(warp (astPos.v - pos.v), speed.v) >= 0.0f then
+            match TrajectoryCollision.getIntersectionTime(wpos.v, speed.v, float32 radius, astPos.v, Vector3.Zero, float32 asteroids.radius.[idxAsteroid]) with
+            | TrajectoryCollision.IntersectionAt t ->
+                let t = t * 1.0f<s>
+                if 0.0f<s> <= t && t <= dt then
+                    Some idxAsteroid
+                else
+                    None
+            | TrajectoryCollision.NoIntersection -> None
+        else
+            None
+
+    Octree.checkIntersection
+        (fun (bbox : BoundingBox) -> travelBox.Intersects(bbox))
+        (ArrayInlined.tryMapFirst check)
+        asteroids.octree
 
 
 /// Get an array of ship indices and asteroid indices corresponding to ships colliding with asteroids.
