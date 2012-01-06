@@ -373,9 +373,16 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
     let posVisible =
         ArrayInlined.map3
             (fun (posHost : TypedVector3<m>) (posClient : TypedVector3<m>) (t : float32) -> (1.0f - t) * posHost + t * posClient)
-            ships.posHost.Content
-            ships.posClient.Content
+            posHost
+            posClient
             ships.posLerpT.Content
+
+#if DEBUG
+    for shipIdx in localPlayers do
+        let shipIdx = int shipIdx
+        assert(posClient.[shipIdx] = posHost.[shipIdx])
+        assert(posClient.[shipIdx] = posVisible.[shipIdx])
+#endif
 
     { ships with
         accels = accels
