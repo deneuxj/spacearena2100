@@ -94,7 +94,7 @@ let renderBullets dev (effect : Graphics.Effect) setView setProjection setWorld 
     Quads.renderBillboards setWorld dev position heading up 1.0f<m> positions effect
 
 
-let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) =
+let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) (shipTypes : GameState.ShipType[]) =
     let up = TypedVector.cross3(right, heading).v
     let view =
         Matrix.CreateLookAt(position.v, position.v + heading.v, up)
@@ -102,11 +102,13 @@ let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>)
     let projection =
         Matrix.CreatePerspectiveFieldOfView(fieldOfView, ratio, nearPlane, farPlane)
 
-    let inline computeTransform (pos : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
+    let inline computeTransform (pos : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (shipType : GameState.ShipType) =
+        Matrix.CreateScale(float32 shipType.BoundingSphereRadius)
+        *
         Matrix.CreateWorld(pos.v, heading.v, up)
 
     let transforms =
-        ArrayInlined.map3 computeTransform positions headings rights
+        ArrayInlined.map4 computeTransform positions headings rights shipTypes
         |> ArrayInlined.filterRef (fun pos -> pos <> position) positions // Don't render my ship.
     
     renderer.Draw(transforms, view, projection)
