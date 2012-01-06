@@ -10,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
 
 using SpaceArena2100;
+using CleverRake.XnaUtils;
 
 namespace SpaceArena2100
 {
@@ -20,12 +21,16 @@ namespace SpaceArena2100
     {
         GraphicsDeviceManager graphics;
         SpriteBatch spriteBatch;
+        SpriteFont font;
+        IFramePerSecondCounter fpsCounter;
 
         public Game1()
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
-            Components.Add(TestGameComponent.newComponent(this));
+            var component = TestGameComponent.newComponent(this);
+            Components.Add(component);
+            fpsCounter = component;
         }
 
         /// <summary>
@@ -49,8 +54,9 @@ namespace SpaceArena2100
         {
             // Create a new SpriteBatch, which can be used to draw textures.
             spriteBatch = new SpriteBatch(GraphicsDevice);
-
+            
             // TODO: use this.Content to load your game content here
+            font = Content.Load<SpriteFont>("courier");
         }
 
         /// <summary>
@@ -86,9 +92,16 @@ namespace SpaceArena2100
         {
             GraphicsDevice.Clear(Color.CornflowerBlue);
 
-            // TODO: Add your drawing code here
-
             base.Draw(gameTime);
+
+            // TODO: Add your drawing code here
+            try {
+              spriteBatch.Begin();
+              spriteBatch.DrawString(font, String.Format("{0:F1} fps", fpsCounter.FramesPerSecond), new Vector2(100.0f, 70.0f), Color.White);
+            }
+            finally {
+              spriteBatch.End();
+            }
         }
     }
 }
