@@ -381,7 +381,7 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
     for shipIdx in localPlayers do
         let shipIdx = int shipIdx
         assert(posClient.[shipIdx] = posHost.[shipIdx])
-        assert(posClient.[shipIdx] = posVisible.[shipIdx])
+        assert((posClient.[shipIdx] - posVisible.[shipIdx]).Length < 0.001f<m>)
 #endif
 
     { ships with
