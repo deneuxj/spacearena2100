@@ -95,14 +95,15 @@ let renderBullets dev (effect : Graphics.Effect) setView setProjection setWorld 
 
 
 let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) =
+    let up = TypedVector.cross3(right, heading).v
     let view =
-        Matrix.CreateLookAt(position.v, position.v + heading.v, TypedVector.cross3(right, heading).v)
+        Matrix.CreateLookAt(position.v, position.v + heading.v, up)
 
     let projection =
         Matrix.CreatePerspectiveFieldOfView(fieldOfView, ratio, nearPlane, farPlane)
 
     let inline computeTransform (pos : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
-        Matrix.CreateWorld(pos.v, heading.v, TypedVector.cross3(right, heading).v)
+        Matrix.CreateWorld(pos.v, heading.v, up)
 
     let transforms =
         ArrayInlined.map3 computeTransform positions headings rights
