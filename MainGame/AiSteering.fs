@@ -10,6 +10,22 @@ open SpaceArena2100.Units
 
 open SpaceArena2100.ShipControl
 
+module private Utils =
+    let nopControls : Controls =
+        { turnRight = 0.0f<iu>
+          turnUp = 0.0f<iu>
+          forwardSpeedAdjust = 0.0f<iu>
+          fireRequested = false }
+
+
+    let clampOne x = MathHelper.Clamp(x, -1.0f, 1.0f)
+
+open Utils
+
+let trackingTime = 5.0f<s>
+let shootingTime = 5.0f<s>
+
+
 let computePathTo (ships : Ships) (idxTarget : int<GPI>) (idxAi : int<GPI>) =
     let h t =
         let targetPos = ships.posClient.[idxTarget]
@@ -23,81 +39,16 @@ let computePathTo (ships : Ships) (idxTarget : int<GPI>) (idxAi : int<GPI>) =
 
         Hermite.hermite ships.posClient.[idxAi].v ships.speeds.[idxAi].v 0.0f goalPos.v targetSpeed.v (float32 t)
 
-    let candidates =
-        //[| 0.1f<s>; 1.0f<s> ; 5.0f<s> |]
-        //[| 1.0f<s> |]
-        [| (ships.posClient.[idxAi] - ships.posClient.[idxTarget]).Length / 10.0f<m/s> |]
-        |> Array.choose (
-            fun t ->
-                match h t with
-                | Some x -> Some (t, x)
-                | None -> None)
+    let speedToTarget = 10.0f<m/s>
+    let timeToTarget = (ships.posClient.[idxAi] - ships.posClient.[idxTarget]).Length / speedToTarget
 
-    let eval (t : float32<s>) (accelFun : float32 -> Vector3) =
-        let dt = t / 100.0f
-        seq {
-            for t in 0.0f<s> .. dt .. t do
-                yield (accelFun (float32 t)).Length()
-        }
-        |> Seq.sum
-        |> ((*) (1.0f / t))
-        |> float32
-
-    if Array.isEmpty candidates then
-        None
-    else
-        candidates
-        |> Array.tryFind(fun (t, (_, _, accelFun)) -> true || eval t accelFun < 10000.0f)
-        |> Option.map snd
+    h timeToTarget
 
 
-let steerFromPath pos speed (heading : TypedVector3<1>) (right : TypedVector3<1>) posFun speedFun =
-    let aheadTime = 0.5f
-    let aheadPos = TypedVector3<m>(posFun aheadTime)
-    let aheadSpeed = TypedVector3<m/s>(speedFun aheadTime)
-
-    let diffPos = aheadPos - pos
-
-    if TypedVector.dot3(diffPos, heading) < 0.0f<m> then
-        let turnRight =
-            let projX = TypedVector.dot3(diffPos, right)
-            if projX > 0.0f<m> then 1.0f else -1.0f
-        let longSpeed = TypedVector.dot3(heading, speed)
-        let adjustSpeed =
-            MathHelper.Clamp(float32 (-longSpeed), -1.0f, 1.0f)
-
-        { turnRight = turnRight * 1.0f<iu>
-          turnUp = 0.0f<iu>
-          forwardSpeedAdjust = 0.0f<iu>
-          fireRequested = false }
-    else
-        let turnRight =
-            let projX = TypedVector.dot3(diffPos, right)
-            MathHelper.Clamp(float32 projX, -1.0f, 1.0f)
-
-        let up = TypedVector.cross3(right, heading)
-        let turnUp =
-            let projY = TypedVector.dot3(diffPos, up)
-            MathHelper.Clamp(float32 projY, -1.0f, 1.0f)
-
-        let longSpeed = TypedVector.dot3(heading, speed)
-        let adjustSpeed =
-            MathHelper.Clamp(float32 (aheadSpeed.Length - longSpeed), -1.0f, 1.0f)
-
-        let ret : Controls =
-            { turnRight = turnRight * 1.0f<iu>
-              turnUp = turnUp * 1.0f<iu>
-              forwardSpeedAdjust = adjustSpeed * 1.0f<iu>
-              fireRequested = false }
-
-        ret
-
-
-let steerFromPath2 pos speed (heading : TypedVector3<1>) (right : TypedVector3<1>) posFun speedFun accelFun =
+let steerFromPath pos speed (heading : TypedVector3<1>) (right : TypedVector3<1>) posFun speedFun accelFun =
     let up = TypedVector.cross3(right, heading)
     let accelGoal = TypedVector3<m/s^2>(accelFun 0.0f)
 
-    let clampOne x = MathHelper.Clamp(x, -1.0f, 1.0f)
 
     let turnRight, turnUp =
         let dir : Vector3 = accelGoal.v
@@ -131,22 +82,51 @@ let steerFromPath2 pos speed (heading : TypedVector3<1>) (right : TypedVector3<1
         { turnRight = turnRight * 1.0f<iu>
           turnUp = turnUp * 1.0f<iu>
           forwardSpeedAdjust = adjustSpeed * 1.0f<iu>
-          fireRequested = true }
+          fireRequested = false }
 
     ret
 
-let selectTarget (ships : Ships) (idxAi : int<GPI>) =
-    let myPos = ships.posClient.[idxAi]
 
+let aimAtTarget (bulletSpeed : float32<m/s>) (pos : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (targetPos : TypedVector3<m>) (targetSpeed : TypedVector3<m/s>) =
+    let distanceToTarget = (pos - targetPos).Length
+    let timeToTarget = distanceToTarget / bulletSpeed
+    let goalPos = targetPos + timeToTarget * targetSpeed
+
+    match TypedVector.tryNormalize3 (goalPos - pos) with
+    | Some dir ->
+        if distanceToTarget < 100.0f<m> && TypedVector.dot3(dir, heading) > 0.9995f then
+            let turnRight = TypedVector.dot3(dir, right) |> clampOne
+            let up = TypedVector.cross3(right, heading)
+            let turnUp = TypedVector.dot3(dir, up) |> clampOne
+            let fire = turnRight * turnRight + turnUp * turnUp < 0.05f
+            { turnRight = turnRight * 1.0f<iu>
+              turnUp = turnUp * 1.0f<iu>
+              forwardSpeedAdjust = 0.0f<iu>
+              fireRequested = fire }
+            |> Some
+        else
+            None
+    | None -> None
+
+
+let getPathToTarget ships idxAi idxTarget =
+    let myPos = ships.posClient.[idxAi]
+    let posTarget = ships.posVisible.[idxTarget]
+    let dist = (posTarget - myPos).Length
+    match computePathTo ships idxTarget idxAi with
+    | Some funs ->
+        Some (idxTarget, funs)
+    | None ->
+        None
+        
+            
+let selectTarget (ships : Ships) (idxAi : int<GPI>) =
     let paths =
         [|
             for idxTarget in ships.posClient.First .. 1<GPI> .. ships.posClient.Last do
                 if idxAi <> idxTarget then
-                    let posTarget = ships.posVisible.[idxTarget]
-                    let dist = (posTarget - myPos).Length
-                    match computePathTo ships idxTarget idxAi with
-                    | Some funs ->
-                        yield (idxTarget, funs)
+                    match getPathToTarget ships idxAi idxTarget with
+                    | Some x -> yield x
                     | None -> ()
         |]
 
@@ -159,19 +139,68 @@ let selectTarget (ships : Ships) (idxAi : int<GPI>) =
         Some (idx, posFun, speedFun, accelFun)
 
 
-let steer ships idxAi =
-    match selectTarget ships idxAi with
-    | Some (idxTarget, posFun, speedFun, accelFun) ->
-        steerFromPath2
-            ships.posClient.[idxAi]
-            ships.speeds.[idxAi]
-            ships.headings.[idxAi]
-            ships.rights.[idxAi]
-            posFun
-            speedFun
-            accelFun
-    | None ->
-        { turnRight = 0.0f<iu>
-          turnUp = 0.0f<iu>
-          forwardSpeedAdjust = 0.0f<iu>
-          fireRequested = false }
+let updateAi getBulletSpeed (dt : float32<s>) (state : AiState) ships idxAi =
+    match state with
+    | Undecided ->
+        match selectTarget ships idxAi with
+        | Some (idxTarget, posFun, speedFun, accelFun) ->
+            Tracking (trackingTime, idxTarget)
+            ,
+            nopControls
+        | None ->
+            Undecided, nopControls
+
+    | Tracking (timeLeft, idxTarget) ->
+        let timeLeft = timeLeft - dt
+        let nextState =
+            if timeLeft > 0.0f<s> then
+                let aimCommand =
+                    aimAtTarget
+                        (getBulletSpeed idxAi)
+                        ships.posClient.[idxAi]
+                        ships.headings.[idxAi]
+                        ships.rights.[idxAi]
+                        ships.posVisible.[idxTarget]
+                        ships.speeds.[idxTarget]
+                match aimCommand with
+                | None -> Tracking (timeLeft, idxTarget)
+                | Some _ -> ShootingAt (shootingTime, idxTarget)
+            else
+                Undecided
+        let controls =
+            match getPathToTarget ships idxAi idxTarget with
+            | Some (_, (posFun, speedFun, accelFun)) ->
+                steerFromPath
+                    ships.posClient.[idxAi]
+                    ships.speeds.[idxAi]
+                    ships.headings.[idxAi]
+                    ships.rights.[idxAi]
+                    posFun
+                    speedFun
+                    accelFun
+            | None ->
+                nopControls
+        nextState, controls
+    
+    | ShootingAt (timeLeft, idxTarget) ->
+        let timeLeft = timeLeft - dt
+        let aimCommand =
+            aimAtTarget
+                (getBulletSpeed idxAi)
+                ships.posClient.[idxAi]
+                ships.headings.[idxAi]
+                ships.rights.[idxAi]
+                ships.posVisible.[idxTarget]
+                ships.speeds.[idxTarget]
+        let nextState =
+            if timeLeft > 0.0f<s> && Option.isSome aimCommand then
+                ShootingAt (timeLeft, idxTarget)
+            else
+                Undecided
+            
+        let controls =
+            match aimCommand with
+            | None -> nopControls
+            | Some x -> x
+
+        nextState, controls

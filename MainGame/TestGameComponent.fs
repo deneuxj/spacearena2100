@@ -61,7 +61,7 @@ let newDescription() : Description =
         |> Array.fold (fun (idx : int<AstIdx>, octree : Octree.Node<int<AstIdx> list>) sphere ->
                 idx + 1<AstIdx>
                 ,
-                Octree.insert 10 10 (fun (bbox : BoundingBox) idx2 -> boundingSpheres.[idx2].Intersects(bbox)) octree idx 0
+                Octree.insert 5 10 (fun (bbox : BoundingBox) idx2 -> boundingSpheres.[idx2].Intersects(bbox)) octree idx 0
             )
             (0<AstIdx>, Octree.newEmpty boundingSpace)
 
@@ -84,7 +84,7 @@ let newDescription() : Description =
       asteroids = asteroids;
     }
 
-let newInitialState() : State =
+let newInitialState (localAiPlayerIdxs : int<GPI> list) : State =
     let pos = MarkedArray [| TypedVector3<m>(0.0f<m>, 0.0f<m>, -50.0f<m>) ; TypedVector3<m>() |]
     let ships : Ships =
         { headings = MarkedArray [| TypedVector3<1>(0.0f, 0.0f, 1.0f) ; TypedVector3<1>(Vector3.UnitX) |]
@@ -122,13 +122,17 @@ let newInitialState() : State =
           radii = MarkedArray [||]
         }
 
-    { ships = ships ; bullets = bullets ; supplies = supplies ; time = 0<dms> }
+    let ais =
+        localAiPlayerIdxs
+        |> List.map (fun _ -> Undecided)
+
+    { ships = ships ; ais = ais ; bullets = bullets ; supplies = supplies ; time = 0<dms> }
 
 open CleverRake.XnaUtils.EvilNull
 
 let newComponent (game : Game) =
     let description = newDescription()
-    let initialState = newInitialState(), System.TimeSpan.FromSeconds(0.0)
+    let initialState = newInitialState description.localAiPlayerIdxs, System.TimeSpan.FromSeconds(0.0)
 
     let content = new Content.ContentManager(game.Services)
     let gdm =
@@ -191,9 +195,10 @@ let newComponent (game : Game) =
         let humanControls =
             ShipControl.getAllControls settings [ Some PlayerIndex.One ; None ]
 
-        let aiControls =
-            description.localAiPlayerIdxs
-            |> List.map (AiSteering.steer state.ships)
+        let aiStates, aiControls =
+            List.zip description.localAiPlayerIdxs state.ais
+            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed description.localAiPlayerIdxs state.ships) dt ai state.ships idxAi)
+            |> List.unzip
 
         let rec work humanControls aiControls humanPlayers aiPlayers =
             match humanControls, aiControls, humanPlayers, aiPlayers with
@@ -206,7 +211,7 @@ let newComponent (game : Game) =
                     hc :: work restHC aiControls restHIDX aiPlayers
             | _ -> failwith "Missing data"
 
-        let controls =
+        let controls = //humanControls
             work humanControls aiControls description.localPlayersIdxs description.localAiPlayerIdxs
 
         let ships, newBullets, lastLocalGuid =
@@ -218,6 +223,7 @@ let newComponent (game : Game) =
         let state =
             { state with
                 ships = ships
+                ais = aiStates
                 bullets = { state.bullets with lastLocalGuid = lastLocalGuid } }
 
         let timedEvents =
@@ -225,16 +231,18 @@ let newComponent (game : Game) =
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
             |> Array.ofList
 
-        (ships.posHost.[ai],
-         ships.headings.[ai],
-         ships.rights.[ai],
-         ships.speeds.[ai],
+        let subject = me
+        (ships.posHost.[subject],
+         ships.headings.[subject],
+         ships.rights.[subject],
+         ships.speeds.[subject],
          computationTime,
          state.bullets.pos,
          state.bullets.radii,
          state.ships.posVisible.Content,
          state.ships.headings.Content,
-         state.ships.rights.Content
+         state.ships.rights.Content,
+         description.shipTypes.Content
         )
         ,
         (state, controls, timedEvents)
@@ -253,7 +261,7 @@ let newComponent (game : Game) =
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipHeadings, shipRights) =
+    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipHeadings, shipRights, shipTypes) =
         match asteroidRenderer.Value, shipRenderer.Value, spriteBatch.Value, font.Value, effect.Value with
         | Some r, Some r2, Some sb, Some font, Some effect ->
             renderAsteroids r pos heading right
@@ -278,13 +286,11 @@ let newComponent (game : Game) =
                 shipPos
                 shipHeadings
                 shipRights
+                shipTypes
             try
                 sb.Begin()
                 sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
-//                sb.DrawString(font, sprintf "%A" pos.v, Vector2(100.0f, 130.0f), Color.White)
-//                sb.DrawString(font, sprintf "%A" heading.v, Vector2(100.0f, 160.0f), Color.White)
-//                sb.DrawString(font, sprintf "%A" right.v, Vector2(100.0f, 190.0f), Color.White)
-                sb.DrawString(font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(100.0f, 220.0f), Color.White)
+                sb.DrawString(font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(130.0f, 220.0f), Color.White)
             finally
                 sb.End()
         | _ -> ()

@@ -97,16 +97,42 @@ type Bullets =
       owners : int<GPI>[];
       lastLocalGuid : int<BulletGuid> }
 
+module BulletConstants =
+    let speed = 300.0f<m/s>
+    let fastSpeed = 500.0f<m/s>
+    let lifetime = 2.0f<s>
+    let radius = 0.2f<m>
+    let bigRadius = 0.3f<m>
+    let firePeriod = 0.25f<s>
+    let highRateFirePeriod = 0.1f<s>
+    let multiFireSpread = MathHelper.ToRadians(5.0f) * 1.0f<rad>
+    let density = 1000.0f<kg/m^3>
+
 type Supplies =
     { pos : MarkedArray<GSI, Vector3>;
       types : MarkedArray<GSI, SupplyType>;
       radii : MarkedArray<GSI, float32<m>> }
 
+type AiState =
+    | Undecided
+    | Tracking of float32<s> * int<GPI>
+    | ShootingAt of float32<s> * int<GPI>
+
 /// Data that changes every frame.
 type State =
     { ships : Ships;
+      ais : AiState list;
       bullets : Bullets;
       supplies : Supplies;      
       time : int<dms>;
     }
 
+let getBulletSpeed (localPlayers : int<GPI> list) (ships : Ships) (player : int<GPI>) =
+    match List.tryFindIndex ((=) player) localPlayers with
+    | Some idx ->
+        if ships.numFastBullets.[idx] > 0 then
+            BulletConstants.fastSpeed
+        else
+            BulletConstants.speed
+    | None ->
+        failwith "Cannot get bullet speed of remote player"

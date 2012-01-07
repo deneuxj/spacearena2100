@@ -8,6 +8,7 @@ open CleverRake.XnaUtils.QuaternionExtensions
 open CleverRake.XnaUtils.Units
 
 open SpaceArena2100.Units
+open SpaceArena2100.GameState
 open SpaceArena2100.GameStateUpdate
 
 /// Compute the side force to apply to nullify lateral velocity.
@@ -158,7 +159,7 @@ let getControls settings (pi : PlayerIndex option) =
         { turnRight = 0.0f<iu>
           turnUp = 0.0f<iu>
           forwardSpeedAdjust = 0.0f<iu>
-          fireRequested = true }
+          fireRequested = false }
 
 /// Extract controls from all local players' game pads.
 let getAllControls settings playerIndices =
