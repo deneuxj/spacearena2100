@@ -24,6 +24,88 @@ open Utils
 
 let trackingTime = 5.0f<s>
 let shootingTime = 5.0f<s>
+let steeringTime = 0.5f<s>
+
+
+let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idx : int<GPI>) =
+    let heading = ships.headings.[idx]
+    let right = ships.rights.[idx]
+    let up = TypedVector.cross3(right, heading)
+
+    let myShipType = shipTypes.[idx]
+
+    let forward = myShipType.MaxForwardThrust * myShipType.InversedMass * heading
+    let backward = -myShipType.MaxBackwardThrust * myShipType.InversedMass * heading
+    let right = myShipType.MaxSideForce * myShipType.InversedMass * right
+    let up = myShipType.MaxVerticalForce * myShipType.InversedMass * up
+
+    [|
+        TypedVector3<m/s^2>()
+        forward
+        forward + right
+        forward - right
+        forward + up
+        forward - up
+        right
+        -1.0f * right
+        up
+        -1.0f * up
+        backward
+    |]
+
+
+let evalDistance (d : float32<m>) =
+    let d = float32 d
+    1.0f / (1.0f + log (1.0f + d))
+
+
+let evalSituation (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idxAi : int<GPI>) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) =
+    let evalOneShip (idxOther : int<GPI>) (accelOther : TypedVector3<m/s^2>) : float32 =
+        let speedOther = ships.speeds.[idxOther] + dt * accelOther
+        let posOther = ships.posHost.[idxOther] + dt * speedOther
+        let distance = (posOther - pos).Length
+        evalDistance distance
+
+(*        -
+        (1.0f - evalDistance (1e-4f * dt * (speedOther - speed).Length))
+*)
+
+    let zeroAccel = TypedVector3<m/s^2>()
+    let vals =
+        [|
+            for idx in ships.posClient.First .. 1<GPI> .. ships.posClient.Last do
+                if idx <> idxAi && ships.health.[idx] > 0.0f<Health> then
+                    yield
+                        evalOneShip idx zeroAccel
+        |]
+
+    match Array.length vals with
+    | 0 -> 0.0f
+    | n -> Array.sum vals / (float32 n)
+
+
+let computeBestAccel (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idx : int<GPI>) =
+    let evalNewPos (accel : TypedVector3<m/s^2>) =
+        let newSpeed = ships.speeds.[idx] + dt * accel
+        let newPos = ships.posHost.[idx] + dt * newSpeed
+        evalSituation dt ships shipTypes idx newPos newSpeed
+
+    let accelValues =
+        getAccels ships shipTypes idx
+        |> Array.map (fun accel -> accel, evalNewPos accel)
+
+    let bestAccel = 
+        accelValues
+        |> Array.maxBy snd
+        |> fst
+
+    let bestIdx =
+        getAccels ships shipTypes idx
+        |> Array.findIndex ((=) bestAccel)
+
+    printfn "%d" bestIdx
+
+    bestAccel
 
 
 let computePathTo (ships : Ships) (idxTarget : int<GPI>) (idxAi : int<GPI>) =
@@ -139,9 +221,58 @@ let selectTarget (ships : Ships) (idxAi : int<GPI>) =
         Some (idx, posFun, speedFun, accelFun)
 
 
-let updateAi getBulletSpeed (dt : float32<s>) (state : AiState) ships idxAi =
+let steerFromAccel (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelGoal : TypedVector3<m/s^2>) =
+    let up = TypedVector.cross3(right, heading)
+
+    let turnRight, turnUp =
+        let dir = accelGoal
+
+        match TypedVector.tryNormalize3 accelGoal with
+        | Some dir ->
+            if TypedVector.dot3(dir, heading) < 0.0f then
+                0.0f
+                ,
+                0.0f
+            else
+                TypedVector.dot3(dir, right) |> clampOne
+                ,
+                TypedVector.dot3(dir, up) |> clampOne
+        | None ->
+            0.0f, 0.0f
+
+    let magic = 10.0f<m/s^2>
+    let sq x = x * x
+    let correctLength = sq turnRight + sq turnUp
+
+    let adjustSpeed =
+        if correctLength < 0.01f then
+            (TypedVector.dot3(accelGoal, heading) / magic)
+            |> clampOne
+        else
+            0.0f
+
+    let adjustSpeed =
+        if adjustSpeed < 0.0f then
+            -1.0f
+        else adjustSpeed
+
+    let ret : Controls =
+        { turnRight = turnRight * 1.0f<iu>
+          turnUp = turnUp * 1.0f<iu>
+          forwardSpeedAdjust = adjustSpeed * 1.0f<iu>
+          fireRequested = false }
+
+    ret
+
+
+let updateAi getBulletSpeed (dt : float32<s>) gameState description (state : AiState) idxAi =
+    let ships = gameState.ships
+    let shipTypes = description.shipTypes
+
     match state with
     | Undecided ->
+        Tactical, nopControls
+(*
         match selectTarget ships idxAi with
         | Some (idxTarget, posFun, speedFun, accelFun) ->
             Tracking (trackingTime, idxTarget)
@@ -149,6 +280,7 @@ let updateAi getBulletSpeed (dt : float32<s>) (state : AiState) ships idxAi =
             nopControls
         | None ->
             Undecided, nopControls
+*)
 
     | Tracking (timeLeft, idxTarget) ->
         let timeLeft = timeLeft - dt
@@ -168,6 +300,7 @@ let updateAi getBulletSpeed (dt : float32<s>) (state : AiState) ships idxAi =
             else
                 Undecided
         let controls =
+
             match getPathToTarget ships idxAi idxTarget with
             | Some (_, (posFun, speedFun, accelFun)) ->
                 steerFromPath
@@ -180,6 +313,7 @@ let updateAi getBulletSpeed (dt : float32<s>) (state : AiState) ships idxAi =
                     accelFun
             | None ->
                 nopControls
+
         nextState, controls
     
     | ShootingAt (timeLeft, idxTarget) ->
@@ -202,5 +336,20 @@ let updateAi getBulletSpeed (dt : float32<s>) (state : AiState) ships idxAi =
             match aimCommand with
             | None -> nopControls
             | Some x -> x
+
+        nextState, controls
+
+    | Tactical ->
+        let bestAccel = computeBestAccel steeringTime ships shipTypes idxAi
+        Steering (steeringTime, bestAccel), nopControls
+
+    | Steering (timeLeft, accel) ->
+        let timeLeft = timeLeft - dt
+        let nextState =
+            if timeLeft > 0.0f<s> then
+                Steering (timeLeft, accel)
+            else Undecided
+        let controls =
+            steerFromAccel ships.headings.[idxAi] ships.rights.[idxAi] accel
 
         nextState, controls

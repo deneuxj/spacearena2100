@@ -117,6 +117,8 @@ type AiState =
     | Undecided
     | Tracking of float32<s> * int<GPI>
     | ShootingAt of float32<s> * int<GPI>
+    | Tactical
+    | Steering of float32<s> * TypedVector3<m/s^2>
 
 /// Data that changes every frame.
 type State =

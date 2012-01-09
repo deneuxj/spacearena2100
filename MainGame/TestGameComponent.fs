@@ -197,7 +197,7 @@ let newComponent (game : Game) =
 
         let aiStates, aiControls =
             List.zip description.localAiPlayerIdxs state.ais
-            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed description.localAiPlayerIdxs state.ships) dt ai state.ships idxAi)
+            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed description.localAiPlayerIdxs state.ships) dt state description ai idxAi)
             |> List.unzip
 
         let rec work humanControls aiControls humanPlayers aiPlayers =
@@ -231,7 +231,7 @@ let newComponent (game : Game) =
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
             |> Array.ofList
 
-        let subject = me
+        let subject = ai
         (ships.posHost.[subject],
          ships.headings.[subject],
          ships.rights.[subject],
