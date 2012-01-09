@@ -24,7 +24,7 @@ open Utils
 
 let trackingTime = 5.0f<s>
 let shootingTime = 5.0f<s>
-let steeringTime = 0.1f<s>
+let steeringTime = 1.0f<s>
 
 
 let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idx : int<GPI>) =
@@ -37,41 +37,55 @@ let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>)
     let maxForwardAccel = myShipType.MaxForwardThrust * myShipType.InversedMass
     let maxBackwardAccel = myShipType.MaxBackwardThrust * myShipType.InversedMass
 
-    let forward =  maxForwardAccel * heading
-    let backward = -maxBackwardAccel * heading
-    let right = maxForwardAccel * right
-    let up = maxForwardAccel * up
-
     [|
         TypedVector3<m/s^2>()
-        forward
-        forward + right
-        forward - right
-        forward + up
-        forward - up
-        right
-        -1.0f * right
-        up
-        -1.0f * up
-        backward
+        maxForwardAccel * heading
+        0.25f * maxForwardAccel * heading
+        maxForwardAccel * TypedVector.normalize3(heading + 0.25f * right)
+        maxForwardAccel * TypedVector.normalize3(heading - 0.25f * right)
+        maxForwardAccel * TypedVector.normalize3(heading + 0.25f * up)
+        maxForwardAccel * TypedVector.normalize3(heading - 0.25f * up)
+        maxForwardAccel * TypedVector.normalize3(heading + 0.5f * right)
+        maxForwardAccel * TypedVector.normalize3(heading - 0.5f * right)
+        maxForwardAccel * TypedVector.normalize3(heading + 0.5f * up)
+        maxForwardAccel * TypedVector.normalize3(heading - 0.5f * up)
+        maxForwardAccel * TypedVector.normalize3(0.25f * heading + right)
+        maxForwardAccel * TypedVector.normalize3(0.25f * heading - right)
+        maxForwardAccel * TypedVector.normalize3(0.25f * heading + up)
+        maxForwardAccel * TypedVector.normalize3(0.25f * heading - up)
+        maxForwardAccel * TypedVector.normalize3(0.5f * heading + right)
+        maxForwardAccel * TypedVector.normalize3(0.5f * heading - right)
+        maxForwardAccel * TypedVector.normalize3(0.5f * heading + up)
+        maxForwardAccel * TypedVector.normalize3(0.5f * heading - up)
+        -maxBackwardAccel * heading
+        -0.5f * maxBackwardAccel * heading
+        -0.25f* maxBackwardAccel * heading
     |]
 
 
-let evalDistance (d : float32<m>) =
-    let d = float32 d
-    1.0f / (1.0f + log (1.0f + d))
+let evalDecrease (d : float) =
+    1.0 / (1.0 + d)
 
 
 let evalSituation (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idxAi : int<GPI>) (pos : TypedVector3<m>) (speed : TypedVector3<m/s>) =
-    let evalOneShip (idxOther : int<GPI>) (accelOther : TypedVector3<m/s^2>) : float32 =
+    let evalOneShip (idxOther : int<GPI>) (accelOther : TypedVector3<m/s^2>) : float =
         let speedOther = ships.speeds.[idxOther] + dt * accelOther
         let posOther = ships.posHost.[idxOther] + dt * speedOther
         let distance = (posOther - pos).Length
-        evalDistance distance
+        let dist0 = 50.0
+        let distanceBonus = evalDecrease (max dist0 (float distance))
+        let diffSpeed0 = 20.0
+        let matchingSpeedBonus = evalDecrease (max diffSpeed0 (float (speedOther - speed).Length))
 
-(*        -
-        (1.0f - evalDistance (1e-4f * dt * (speedOther - speed).Length))
-*)
+        let aimingWeight, aimingBonus =
+            if distance > 200.0f<m> then
+                0.0, 0.0
+            else
+                match TypedVector.tryNormalize3 speed with
+                | Some dir -> 0.25, 0.5 * float (TypedVector.dot3(dir, TypedVector.normalize3(posOther - pos)) + 1.0f)
+                | None -> 0.0, 0.0
+
+        ((1.0 - aimingWeight) * distanceBonus + distanceBonus * matchingSpeedBonus + aimingWeight * aimingBonus) / (1.0 + distanceBonus)
 
     let zeroAccel = TypedVector3<m/s^2>()
     let vals =
@@ -83,8 +97,8 @@ let evalSituation (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI
         |]
 
     match Array.length vals with
-    | 0 -> 0.0f
-    | n -> Array.sum vals / (float32 n)
+    | 0 -> 0.0
+    | n -> Array.sum vals / (float n)
 
 
 let computeBestAccel (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idx : int<GPI>) =
@@ -224,7 +238,7 @@ let selectTarget (ships : Ships) (idxAi : int<GPI>) =
         Some (idx, posFun, speedFun, accelFun)
 
 
-let steerFromAccel (maxForwardAccel : float32<m/s^2>) (maxBackwardAccel  : float32<m/s^2>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelGoal : TypedVector3<m/s^2>) =
+let steerFromAccel (maxBackwardAccel  : float32<m/s^2>) (maxForwardAccel : float32<m/s^2>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelGoal : TypedVector3<m/s^2>) =
     let up = TypedVector.cross3(right, heading)
 
     let turnRight, turnUp =
@@ -338,7 +352,7 @@ let updateAi getBulletSpeed (dt : float32<s>) gameState description (state : AiS
         nextState, controls
 
     | Tactical ->
-        let bestAccel = computeBestAccel steeringTime ships shipTypes idxAi
+        let bestAccel = computeBestAccel (1.0f * steeringTime) ships shipTypes idxAi
         Steering (steeringTime, bestAccel), nopControls
 
     | Steering (timeLeft, accel) ->
