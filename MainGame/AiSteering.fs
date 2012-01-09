@@ -24,7 +24,7 @@ open Utils
 
 let trackingTime = 5.0f<s>
 let shootingTime = 5.0f<s>
-let steeringTime = 0.5f<s>
+let steeringTime = 0.1f<s>
 
 
 let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idx : int<GPI>) =
@@ -34,10 +34,13 @@ let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>)
 
     let myShipType = shipTypes.[idx]
 
-    let forward = myShipType.MaxForwardThrust * myShipType.InversedMass * heading
-    let backward = -myShipType.MaxBackwardThrust * myShipType.InversedMass * heading
-    let right = myShipType.MaxSideForce * myShipType.InversedMass * right
-    let up = myShipType.MaxVerticalForce * myShipType.InversedMass * up
+    let maxForwardAccel = myShipType.MaxForwardThrust * myShipType.InversedMass
+    let maxBackwardAccel = myShipType.MaxBackwardThrust * myShipType.InversedMass
+
+    let forward =  maxForwardAccel * heading
+    let backward = -maxBackwardAccel * heading
+    let right = maxForwardAccel * right
+    let up = maxForwardAccel * up
 
     [|
         TypedVector3<m/s^2>()
@@ -221,7 +224,7 @@ let selectTarget (ships : Ships) (idxAi : int<GPI>) =
         Some (idx, posFun, speedFun, accelFun)
 
 
-let steerFromAccel (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelGoal : TypedVector3<m/s^2>) =
+let steerFromAccel (maxForwardAccel : float32<m/s^2>) (maxBackwardAccel  : float32<m/s^2>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelGoal : TypedVector3<m/s^2>) =
     let up = TypedVector.cross3(right, heading)
 
     let turnRight, turnUp =
@@ -229,32 +232,27 @@ let steerFromAccel (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelG
 
         match TypedVector.tryNormalize3 accelGoal with
         | Some dir ->
-            if TypedVector.dot3(dir, heading) < 0.0f then
-                0.0f
-                ,
-                0.0f
-            else
-                TypedVector.dot3(dir, right) |> clampOne
-                ,
-                TypedVector.dot3(dir, up) |> clampOne
+            TypedVector.dot3(dir, right) |> clampOne
+            ,
+            TypedVector.dot3(dir, up) |> clampOne
         | None ->
             0.0f, 0.0f
 
-    let magic = 10.0f<m/s^2>
     let sq x = x * x
     let correctLength = sq turnRight + sq turnUp
 
-    let adjustSpeed =
+    let requestedAccel =
         if correctLength < 0.01f then
-            (TypedVector.dot3(accelGoal, heading) / magic)
-            |> clampOne
+            TypedVector.dot3(accelGoal, heading)
         else
-            0.0f
-
+            0.0f<m/s^2>
+    
     let adjustSpeed =
-        if adjustSpeed < 0.0f then
-            -1.0f
-        else adjustSpeed
+        if requestedAccel < 0.0f<m/s^2> then
+            requestedAccel / maxBackwardAccel
+        else
+            requestedAccel / maxForwardAccel
+        |> clampOne
 
     let ret : Controls =
         { turnRight = turnRight * 1.0f<iu>
@@ -350,6 +348,7 @@ let updateAi getBulletSpeed (dt : float32<s>) gameState description (state : AiS
                 Steering (timeLeft, accel)
             else Undecided
         let controls =
-            steerFromAccel ships.headings.[idxAi] ships.rights.[idxAi] accel
+            let invMass = shipTypes.[idxAi].InversedMass
+            steerFromAccel (invMass * shipTypes.[idxAi].MaxBackwardThrust) (invMass * shipTypes.[idxAi].MaxForwardThrust) ships.headings.[idxAi] ships.rights.[idxAi] accel
 
         nextState, controls
