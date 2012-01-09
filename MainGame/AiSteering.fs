@@ -24,7 +24,7 @@ open Utils
 
 let trackingTime = 5.0f<s>
 let shootingTime = 5.0f<s>
-let steeringTime = 1.0f<s>
+let steeringTime = 0.2f<s>
 
 
 let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>) (idx : int<GPI>) =
@@ -41,22 +41,22 @@ let getAccels (ships : Ships) (shipTypes : MarkedArray<GPI, GameState.ShipType>)
         TypedVector3<m/s^2>()
         maxForwardAccel * heading
         0.25f * maxForwardAccel * heading
-        maxForwardAccel * TypedVector.normalize3(heading + 0.25f * right)
-        maxForwardAccel * TypedVector.normalize3(heading - 0.25f * right)
-        maxForwardAccel * TypedVector.normalize3(heading + 0.25f * up)
-        maxForwardAccel * TypedVector.normalize3(heading - 0.25f * up)
-        maxForwardAccel * TypedVector.normalize3(heading + 0.5f * right)
-        maxForwardAccel * TypedVector.normalize3(heading - 0.5f * right)
-        maxForwardAccel * TypedVector.normalize3(heading + 0.5f * up)
-        maxForwardAccel * TypedVector.normalize3(heading - 0.5f * up)
-        maxForwardAccel * TypedVector.normalize3(0.25f * heading + right)
-        maxForwardAccel * TypedVector.normalize3(0.25f * heading - right)
-        maxForwardAccel * TypedVector.normalize3(0.25f * heading + up)
-        maxForwardAccel * TypedVector.normalize3(0.25f * heading - up)
-        maxForwardAccel * TypedVector.normalize3(0.5f * heading + right)
-        maxForwardAccel * TypedVector.normalize3(0.5f * heading - right)
-        maxForwardAccel * TypedVector.normalize3(0.5f * heading + up)
-        maxForwardAccel * TypedVector.normalize3(0.5f * heading - up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading + 0.25f * right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading - 0.25f * right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading + 0.25f * up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading - 0.25f * up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading + 0.5f * right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading - 0.5f * right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading + 0.5f * up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(heading - 0.5f * up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.25f * heading + right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.25f * heading - right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.25f * heading + up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.25f * heading - up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.5f * heading + right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.5f * heading - right)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.5f * heading + up)
+        0.1f * maxForwardAccel * TypedVector.normalize3(0.5f * heading - up)
         -maxBackwardAccel * heading
         -0.5f * maxBackwardAccel * heading
         -0.25f* maxBackwardAccel * heading
@@ -74,24 +74,30 @@ let evalSituation (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI
         let distance = (posOther - pos).Length
         let dist0 = 50.0
         let distanceBonus = evalDecrease (max dist0 (float distance))
-        let diffSpeed0 = 20.0
-        let matchingSpeedBonus = evalDecrease (max diffSpeed0 (float (speedOther - speed).Length))
 
-        let aimingWeight, aimingBonus =
+        let aimingWeight, aimingBonus, otherAimingBonus =
             if distance > 200.0f<m> then
-                0.0, 0.0
+                0.0, 0.0, 0.0
             else
-                match TypedVector.tryNormalize3 speed with
-                | Some dir -> 0.25, 0.5 * float (TypedVector.dot3(dir, TypedVector.normalize3(posOther - pos)) + 1.0f)
-                | None -> 0.0, 0.0
+                let myBonus =
+                    match TypedVector.tryNormalize3 speed with
+                    | Some dir -> 0.5 * float (TypedVector.dot3(dir, TypedVector.normalize3(posOther - pos)) + 1.0f)
+                    | None -> 0.0
+                let otherBonus =
+                    match TypedVector.tryNormalize3 speedOther with
+                    | Some dir -> 0.5 * float (TypedVector.dot3(dir, TypedVector.normalize3(pos - posOther)) + 1.0f)
+                    | None -> 0.0
+                0.25, myBonus, 2.0 * otherBonus
 
-        ((1.0 - aimingWeight) * distanceBonus + distanceBonus * matchingSpeedBonus + aimingWeight * aimingBonus) / (1.0 + distanceBonus)
+
+        let danger = aimingBonus < otherAimingBonus
+        (if danger then -1.0 else 1.0) * (1.0 - aimingWeight) * distanceBonus + aimingWeight * (aimingBonus - otherAimingBonus)
 
     let zeroAccel = TypedVector3<m/s^2>()
     let vals =
         [|
             for idx in ships.posClient.First .. 1<GPI> .. ships.posClient.Last do
-                if idx <> idxAi && ships.health.[idx] > 0.0f<Health> then
+                if idx <> idxAi (*&& ships.health.[idx] > 0.0f<Health>*) then
                     yield
                         evalOneShip idx zeroAccel
         |]
@@ -119,8 +125,6 @@ let computeBestAccel (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<
     let bestIdx =
         getAccels ships shipTypes idx
         |> Array.findIndex ((=) bestAccel)
-
-    printfn "%d" bestIdx
 
     bestAccel
 
@@ -209,9 +213,6 @@ let aimAtTarget (bulletSpeed : float32<m/s>) (pos : TypedVector3<m>) (heading : 
 
 
 let getPathToTarget ships idxAi idxTarget =
-    let myPos = ships.posClient.[idxAi]
-    let posTarget = ships.posVisible.[idxTarget]
-    let dist = (posTarget - myPos).Length
     match computePathTo ships idxTarget idxAi with
     | Some funs ->
         Some (idxTarget, funs)
@@ -232,10 +233,21 @@ let selectTarget (ships : Ships) (idxAi : int<GPI>) =
     if Array.isEmpty paths then
         None
     else
-        let idx, (posFun, speedFun, accelFun) =
+        let values =
             paths
-            |> Array.minBy(fun (_, (_, _, accelFun)) -> (accelFun 0.0f).Length())
-        Some (idx, posFun, speedFun, accelFun)
+            |> Array.map (fun (_, (_, _, accelFun)) -> (accelFun 0.0f).Length())
+            
+        let candidates =
+            Array.zip values paths
+            |> Array.filter (fun (v, _) -> v < 100.0f)
+
+        if Array.isEmpty candidates then
+            None
+        else
+            candidates
+            |> Array.minBy fst
+            |> snd
+            |> Some
 
 
 let steerFromAccel (maxBackwardAccel  : float32<m/s^2>) (maxForwardAccel : float32<m/s^2>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (accelGoal : TypedVector3<m/s^2>) =
@@ -244,11 +256,12 @@ let steerFromAccel (maxBackwardAccel  : float32<m/s^2>) (maxForwardAccel : float
     let turnRight, turnUp =
         let dir = accelGoal
 
+        let k = 10.0f
         match TypedVector.tryNormalize3 accelGoal with
         | Some dir ->
-            TypedVector.dot3(dir, right) |> clampOne
+            (k * TypedVector.dot3(dir, right)) |> clampOne
             ,
-            TypedVector.dot3(dir, up) |> clampOne
+            (k * TypedVector.dot3(dir, up)) |> clampOne
         | None ->
             0.0f, 0.0f
 
@@ -283,16 +296,20 @@ let updateAi getBulletSpeed (dt : float32<s>) gameState description (state : AiS
 
     match state with
     | Undecided ->
-        Tactical, nopControls
-(*
-        match selectTarget ships idxAi with
-        | Some (idxTarget, posFun, speedFun, accelFun) ->
-            Tracking (trackingTime, idxTarget)
-            ,
-            nopControls
-        | None ->
-            Undecided, nopControls
-*)
+        if evalSituation 0.0f<s> gameState.ships description.shipTypes idxAi gameState.ships.posHost.[idxAi] gameState.ships.speeds.[idxAi] > 0.0 then
+            match selectTarget ships idxAi with
+            | Some (idxTarget, (posFun, speedFun, accelFun)) ->
+                printfn "Tracking"
+                Tracking (trackingTime, idxTarget)
+                ,
+                nopControls
+            | None ->
+                printfn "No good target to track"
+                Tactical, nopControls
+        else
+            printfn "Flee!"
+            Tactical, nopControls
+
 
     | Tracking (timeLeft, idxTarget) ->
         let timeLeft = timeLeft - dt
@@ -308,11 +325,11 @@ let updateAi getBulletSpeed (dt : float32<s>) gameState description (state : AiS
                         ships.speeds.[idxTarget]
                 match aimCommand with
                 | None -> Tracking (timeLeft, idxTarget)
-                | Some _ -> ShootingAt (shootingTime, idxTarget)
+                | Some _ -> printfn "Shoot!" ; ShootingAt (shootingTime, idxTarget)
             else
                 Undecided
-        let controls =
 
+        let controls =
             match getPathToTarget ships idxAi idxTarget with
             | Some (_, (posFun, speedFun, accelFun)) ->
                 steerFromPath

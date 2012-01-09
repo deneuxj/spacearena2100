@@ -231,7 +231,7 @@ let newComponent (game : Game) =
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
             |> Array.ofList
 
-        let subject = ai
+        let subject = me
         (ships.posHost.[subject],
          ships.headings.[subject],
          ships.rights.[subject],
