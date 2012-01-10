@@ -250,7 +250,8 @@ let newComponent (game : Game) =
     let watch = new System.Diagnostics.Stopwatch()
 
     let compute (gt : GameTime) (state : GameState.State, (headings, rights, targetSpeeds, forces), timedEvents) =
-        watch.Restart()
+        watch.Reset()
+        watch.Start()
         let state =
             { state with
                 ships = { state.ships with localTargetSpeeds = targetSpeeds } }

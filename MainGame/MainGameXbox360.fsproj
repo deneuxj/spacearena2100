@@ -1,0 +1,110 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <AssemblyName>MainGame</AssemblyName>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Name>MainGame</Name>
+    <NoStdLib>true</NoStdLib>
+    <OutputType>Library</OutputType>
+    <Platform Condition=" '$(Platform)' == '' ">Xbox 360</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <ProjectGuid>{349ffe7a-2735-4e27-9d62-d870609f0738}</ProjectGuid>
+    <RootNamespace>MainGame</RootNamespace>
+    <SchemaVersion>2.0</SchemaVersion>
+    <Tailcalls>false</Tailcalls>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <XnaFrameworkVersion>v4.0</XnaFrameworkVersion>
+    <XnaOututType>Library</XnaOututType>
+    <XnaPlatform>Xbox 360</XnaPlatform>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|Xbox 360'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <DefineConstants>TRACE;DEBUG;SAFE_PRIMITIVE_TYPES;XBOX;XBOX360</DefineConstants>
+    <DocumentationFile>bin\Debug\MainGame.XML</DocumentationFile>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Xbox 360\Debug</OutputPath>
+    <PlatformTarget>x86</PlatformTarget>
+    <Tailcalls>false</Tailcalls>
+    <WarningLevel>3</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|Xbox 360'">
+    <DebugType>pdbonly</DebugType>
+    <DefineConstants>TRACE;XBOX;XBOX360</DefineConstants>
+    <DocumentationFile>bin\Release\MainGame.XML</DocumentationFile>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Xbox 360\Release</OutputPath>
+    <PlatformTarget>x86</PlatformTarget>
+    <Tailcalls>false</Tailcalls>
+    <WarningLevel>3</WarningLevel>
+  </PropertyGroup>
+  <Import Project="$(MSBuildExtensionsPath)\Microsoft\XNA Game Studio\Microsoft.Xna.GameStudio.targets" />
+  <Import Project="$(MSBuildExtensionsPath32)\FSharp\1.0\Microsoft.FSharp.Targets" Condition="!Exists('$(MSBuildBinPath)\Microsoft.Build.Tasks.v4.0.dll')" />
+  <Import Project="$(MSBuildExtensionsPath32)\..\Microsoft F#\v4.0\Microsoft.FSharp.Targets" Condition=" Exists('$(MSBuildBinPath)\Microsoft.Build.Tasks.v4.0.dll')" />
+  <ItemGroup>
+    <Compile Include="Units.fs" />
+    <Compile Include="WarpCoord.fs" />
+    <Compile Include="GameState.fs" />
+    <Compile Include="GameStateUpdate.fs" />
+    <Compile Include="ShipControl.fs" />
+    <Compile Include="AiSteering.fs" />
+    <Compile Include="Rendering.fs" />
+    <Compile Include="TestGameComponent.fs" />
+    <None Include="Script.fsx" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\xnautils\CoopMultiTasking\CoopMultitaskingXbox360.fsproj">
+      <Name>CoopMultitaskingXbox360</Name>
+      <Project>{9af5cb0e-6332-4287-902b-a69f24701dc7}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\..\xnautils\Core\CoreXbox360.fsproj">
+      <Name>CoreXbox360</Name>
+      <Project>{0ab5e7d9-4e02-4873-9b01-fbfc93d15659}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\..\xnautils\XNAUtils\XNAUtilsXbox360.fsproj">
+      <Name>XNAUtilsXbox360</Name>
+      <Project>{81034ec4-a1cc-4b0a-8b88-78097ae49a3b}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\InstancedModel\InstancedModel.csproj">
+      <Name>InstancedModel</Name>
+      <Project>{3848532a-dc36-439d-9f91-832e1dbb1537}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <Reference Include="FSharp.Core">
+      <HintPath>..\..\xnautils\FSharpCore\FSharp.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Game, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.GamerServices, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Graphics, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Net, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Storage, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+    </Reference>
+    <Reference Include="Microsoft.Xna.Framework.Xact, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="mscorlib" />
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+  </ItemGroup>
+</Project>
