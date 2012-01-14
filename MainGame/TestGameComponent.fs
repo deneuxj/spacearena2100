@@ -190,10 +190,32 @@ let newComponent (game : Game) =
         let me = 0<GPI>
         let ai = 1<GPI>
 
-        let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
-
         let humanControls =
             ShipControl.getAllControls settings [ Some PlayerIndex.One ; None ]
+
+        let subject = me
+        (state.ships.posHost.[subject],
+         state.ships.headings.[subject],
+         state.ships.rights.[subject],
+         state.ships.speeds.[subject],
+         computationTime,
+         state.bullets.pos,
+         state.bullets.radii,
+         state.ships.posVisible.Content,
+         state.ships.headings.Content,
+         state.ships.rights.Content,
+         description.shipTypes.Content
+        )
+        ,
+        (state, humanControls)
+
+    let watch = new System.Diagnostics.Stopwatch()
+
+    let compute (gt : GameTime) (state : GameState.State, humanControls) =
+        let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
+
+        watch.Reset()
+        watch.Start()
 
         let aiStates, aiControls =
             List.zip description.localAiPlayerIdxs state.ais
@@ -220,6 +242,8 @@ let newComponent (game : Game) =
         let controls =
             ShipControl.handlePlayerInputs dt description.localPlayersIdxs ships description.shipTypes controls
 
+        let headings, rights, targetSpeeds, forces = controls
+
         let state =
             { state with
                 ships = ships
@@ -231,27 +255,6 @@ let newComponent (game : Game) =
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
             |> Array.ofList
 
-        let subject = me
-        (ships.posHost.[subject],
-         ships.headings.[subject],
-         ships.rights.[subject],
-         ships.speeds.[subject],
-         computationTime,
-         state.bullets.pos,
-         state.bullets.radii,
-         state.ships.posVisible.Content,
-         state.ships.headings.Content,
-         state.ships.rights.Content,
-         description.shipTypes.Content
-        )
-        ,
-        (state, controls, timedEvents)
-
-    let watch = new System.Diagnostics.Stopwatch()
-
-    let compute (gt : GameTime) (state : GameState.State, (headings, rights, targetSpeeds, forces), timedEvents) =
-        watch.Reset()
-        watch.Start()
         let state =
             { state with
                 ships = { state.ships with localTargetSpeeds = targetSpeeds } }
