@@ -5,3 +5,4 @@ syntax: regexp
 [.]suo$
 /bin/
 /obj/
+[.]cachefile$
