@@ -287,6 +287,7 @@ let newComponent (game : Game) =
         | Some r ->
             try
                 gdm.GraphicsDevice.SetRenderTarget(r.radar)
+                gdm.GraphicsDevice.Clear(Color.Black)
                 let assets : Rendering.ShipRadar.ShipRadarRenderingAssets =
                     { radar = r.radarTexture
                       dot = r.dot
@@ -294,6 +295,8 @@ let newComponent (game : Game) =
                 Rendering.ShipRadar.render assets r.spriteBatch pos heading right shipPos
             finally
                 gdm.GraphicsDevice.SetRenderTarget(null)
+
+            gdm.GraphicsDevice.Clear(Color.Black)
 
             renderAsteroids r.asteroidRenderer pos heading right
             
