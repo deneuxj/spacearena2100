@@ -1,6 +1,7 @@
 ﻿module SpaceArena2100.Rendering
 
 open Microsoft.Xna.Framework
+open Microsoft.Xna.Framework.Graphics
 
 open CleverRake.XnaUtils
 open CleverRake.XnaUtils.Units
@@ -112,3 +113,43 @@ let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>)
         |> ArrayInlined.filterRef (fun pos -> pos <> position) positions // Don't render my ship.
     
     renderer.Draw(transforms, view, projection)
+
+
+module ShipRadar =
+    type ShipRadarRenderingAssets =
+        { radar : Texture2D
+          dot : Texture2D
+        }
+
+    let width = 1000
+    let height = 1000
+
+    /// Render a 2d radar between coordinates (0,0) and (width - 1, height - 1).
+    let render assets (sb : SpriteBatch) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) =
+        let up = TypedVector.cross3(right, heading)
+        let getCoords (posOther : TypedVector3<m>) =
+            let diff = posOther - position
+            let x = TypedVector.dot3(right, diff)
+            let y = TypedVector.dot3(heading, diff)
+            let z = TypedVector.dot3(up, diff)
+            let α = atan2 x y
+            let β = atan2 z y
+            let distance = diff.Length
+            let size = 1.0f / (1.0f + log (float32 distance))
+        
+            α / MathHelper.Pi, β / MathHelper.Pi, size
+
+        try
+            sb.Begin()
+            sb.Draw(assets.radar, Rectangle(0, 0, width, height), Color.White)
+            for otherPos in positions do
+                if otherPos <> position then
+                    let x, y, s = getCoords otherPos
+                    let x = int (float32 width * x * 0.5f) + width / 2
+                    let y = int (float32 height * y * 0.5f) + height / 2
+                    let s =
+                        let maxS = float32 (width / 10)
+                        int (maxS * s)
+                    sb.Draw(assets.dot, Rectangle(x + s/2, height - (y + s/2), s, s), Color.White) 
+        finally
+            sb.End()

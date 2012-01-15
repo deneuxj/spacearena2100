@@ -4,7 +4,7 @@ open Microsoft.Xna.Framework
 
 open CleverRake.XnaUtils
 open CleverRake.XnaUtils.Units
-
+open CleverRake.XnaUtils.Dispose
 open InstancedModel
 
 open SpaceArena2100.GameState
@@ -130,6 +130,19 @@ let newInitialState (localAiPlayerIdxs : int<GPI> list) : State =
 
 open CleverRake.XnaUtils.EvilNull
 
+type RenderResources =
+    { shipModel : Graphics.Model
+      asteroidModel : Graphics.Model
+      spriteBatch : Graphics.SpriteBatch
+      font : Graphics.SpriteFont
+      effect : Graphics.BasicEffect
+      shipRenderer : InstancedModelRenderer
+      asteroidRenderer : InstancedModelRenderer
+      radar : Graphics.RenderTarget2D
+      radarTexture : Graphics.Texture2D
+      dot : Graphics.Texture2D
+    }
+
 let newComponent (game : Game) =
     let description = newDescription()
     let initialState = newInitialState description.localAiPlayerIdxs, System.TimeSpan.FromSeconds(0.0)
@@ -141,13 +154,7 @@ let newComponent (game : Game) =
         | NonNull x -> failwithf "Expected a GraphicsDeviceManager, got %s" (x.GetType().Name)
         | Null -> failwith "No IGraphicsDeviceManager found"
 
-    let shipModel = ref None
-    let asteroidModel = ref None
-    let shipRenderer = ref None
-    let asteroidRenderer = ref None
-    let spriteBatch = ref None
-    let font = ref None
-    let effect = ref None
+    let renderResources = ref None
 
     let initialize() =
         let ship = content.Load<Graphics.Model>("Content\\ships\\finch")
@@ -163,24 +170,34 @@ let newComponent (game : Game) =
             | Graphics.GraphicsProfile.HiDef -> InstancingTechnique.HardwareInstancing
             | Graphics.GraphicsProfile.Reach -> InstancingTechnique.NoInstancing
             | _ -> failwith "Unknown graphics profile"
-        shipRenderer := Some <| new InstancedModelRenderer(gdm, ship, InstancingTechnique = instancingTechnique)
-        asteroidRenderer := Some <| new InstancedModelRenderer(gdm, asteroid, InstancingTechnique = instancingTechnique)
-        
-        shipModel := Some ship
-        asteroidModel := Some asteroid
-        spriteBatch := Some sb
-        font := Some courier
-        effect := Some fx
 
-    let dispose() =
+        let radar = new Graphics.RenderTarget2D(gdm.GraphicsDevice, Rendering.ShipRadar.width, Rendering.ShipRadar.height)
+
+        let radarTexture = content.Load<Graphics.Texture2D>("Content\\radar")
+        let dotTexture = content.Load<Graphics.Texture2D>("Content\\spot")
+
+        renderResources :=
+            Some {
+                shipRenderer = new InstancedModelRenderer(gdm, ship, InstancingTechnique = instancingTechnique)
+                asteroidRenderer = new InstancedModelRenderer(gdm, asteroid, InstancingTechnique = instancingTechnique)        
+                shipModel = ship
+                asteroidModel = asteroid
+                spriteBatch = sb
+                font = courier
+                effect = fx
+                radar = radar
+                radarTexture = radarTexture
+                dot = dotTexture
+            }
+
+    let disposeAll() =
         content.Unload()
-        match spriteBatch.Value with
-        | Some sb -> sb.Dispose()
+        match renderResources.Value with
+        | Some r ->
+            r.spriteBatch.Dispose()
+            r.effect.Dispose()
         | None -> ()
-        match effect.Value with
-        | Some fx -> fx.Dispose()
-        | None -> ()
-        (gdm :> System.IDisposable).Dispose()
+        dispose gdm
 
     let settings =
         description.localPlayersIdxs
@@ -266,16 +283,26 @@ let newComponent (game : Game) =
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
     let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipHeadings, shipRights, shipTypes) =
-        match asteroidRenderer.Value, shipRenderer.Value, spriteBatch.Value, font.Value, effect.Value with
-        | Some r, Some r2, Some sb, Some font, Some effect ->
-            renderAsteroids r pos heading right
+        match renderResources.Value with
+        | Some r ->
+            try
+                gdm.GraphicsDevice.SetRenderTarget(r.radar)
+                let assets : Rendering.ShipRadar.ShipRadarRenderingAssets =
+                    { radar = r.radarTexture
+                      dot = r.dot
+                    }
+                Rendering.ShipRadar.render assets r.spriteBatch pos heading right shipPos
+            finally
+                gdm.GraphicsDevice.SetRenderTarget(null)
+
+            renderAsteroids r.asteroidRenderer pos heading right
             
             Rendering.renderBullets
                 gdm.GraphicsDevice
-                effect
-                (fun V -> effect.View <- V)
-                (fun P -> effect.Projection <- P)
-                (fun W -> effect.World <- W)
+                r.effect
+                (fun V -> r.effect.View <- V)
+                (fun P -> r.effect.Projection <- P)
+                (fun W -> r.effect.World <- W)
                 bulletPos
                 bulletRadii
                 pos
@@ -283,7 +310,7 @@ let newComponent (game : Game) =
                 right
 
             Rendering.renderShips
-                r2
+                r.shipRenderer
                 pos
                 heading
                 right
@@ -291,13 +318,16 @@ let newComponent (game : Game) =
                 shipHeadings
                 shipRights
                 shipTypes
+
             try
-                sb.Begin()
-                sb.DrawString(font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
-                sb.DrawString(font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(130.0f, 220.0f), Color.White)
+                r.spriteBatch.Begin()
+                r.spriteBatch.DrawString(r.font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
+                r.spriteBatch.DrawString(r.font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(130.0f, 220.0f), Color.White)
+                let tsa = gdm.GraphicsDevice.Viewport.TitleSafeArea
+                r.spriteBatch.Draw(r.radar, Rectangle(tsa.Right - 200, tsa.Bottom - 200, 200, 200), new System.Nullable<_>(Rectangle(0, 0, Rendering.ShipRadar.width, Rendering.ShipRadar.height)), Color.White)
             finally
-                sb.End()
+                r.spriteBatch.End()
         | _ -> ()
 
-    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, initialState, initialize, update, compute, draw, dispose)
+    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, initialState, initialize, update, compute, draw, disposeAll)
     comp
