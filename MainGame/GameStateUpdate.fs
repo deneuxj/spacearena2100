@@ -214,7 +214,10 @@ let computeHits guidIsLocal (dt : float32<s>) (ships : Ships) shipTypes (bullets
                     assert (radius' > 0.0f<m>)
 
                     match TrajectoryCollision.getIntersectionTime (pos.v, speed.v, float32 radius, pos'.v, speed'.v, float32 radius') with
-                    | TrajectoryCollision.IntersectionAt _ -> yield (shipIdx, guid, pos, speed, radius)
+                    | TrajectoryCollision.IntersectionAt t ->
+                        let t = 1.0f<s> * t
+                        if t >= 0.0f<s> && t < dt then
+                            yield (shipIdx, guid, pos, speed, radius)
                     | TrajectoryCollision.NoIntersection -> ()
     |]
 
