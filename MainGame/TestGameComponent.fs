@@ -298,8 +298,13 @@ let newComponent (game : Game) =
 
             gdm.GraphicsDevice.Clear(Color.Black)
 
-            renderAsteroids r.asteroidRenderer pos heading right
-            
+            let saveState = gdm.GraphicsDevice.SamplerStates.[0]
+            try
+                gdm.GraphicsDevice.SamplerStates.[0] <- Graphics.SamplerState.LinearWrap
+                renderAsteroids r.asteroidRenderer pos heading right
+            finally
+                gdm.GraphicsDevice.SamplerStates.[0] <- saveState
+
             Rendering.renderBullets
                 gdm.GraphicsDevice
                 r.effect
