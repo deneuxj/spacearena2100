@@ -341,9 +341,8 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
     work localPlayers forces localHeadings localRights
 
     let speeds2 =
-        Array.mapi2
-            (fun idx speed (accel : TypedVector3<m/s^2>) ->
-                let shipIdx = idx * 1<GPI>
+        Array.map2
+            (fun speed (accel : TypedVector3<m/s^2>) ->
                 let speed : TypedVector3<m/s> = speed + dt * accel
                 speed)
             ships.speeds.Content accels.Content
