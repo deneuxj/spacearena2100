@@ -55,6 +55,7 @@ module Quads =
                 dev.DrawUserIndexedPrimitives<VertexPositionNormalTexture>(PrimitiveType.TriangleList, getVertices theQuad, 0, 4, getIndexes theQuad, 0, 2)
 
 
+/// Render a pattern of asteroids of size V around a given position.
 let renderAsteroids (scaling : float32) (positions : TypedVector3<m>[]) (rotations : Quaternion[]) (radii : float32<m>[]) (V : TypedVector3<m>) (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
     let view =
         Matrix.CreateLookAt(Vector3.Zero, heading.v, TypedVector.cross3(right, heading).v)
@@ -80,6 +81,7 @@ let renderAsteroids (scaling : float32) (positions : TypedVector3<m>[]) (rotatio
     renderer.Draw(transforms, view, projection)
 
 
+/// Render bullets using billboards.
 let renderBullets dev (effect : Graphics.Effect) setView setProjection setWorld (positions : TypedVector3<m>[]) (radii : float32<m>[]) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
     let up = TypedVector.cross3(right, heading)
 
@@ -95,6 +97,7 @@ let renderBullets dev (effect : Graphics.Effect) setView setProjection setWorld 
     Quads.renderBillboards setWorld dev position heading up 1.0f<m> positions effect
 
 
+/// Render ships. Ships whose position is identical to the viewer's are not rendered, making this function suitable for first-person views.
 let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) (shipTypes : GameState.ShipType[]) =
     let up = TypedVector.cross3(right, heading).v
     let view =
@@ -115,6 +118,7 @@ let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>)
     renderer.Draw(transforms, view, projection)
 
 
+/// Functions and types to render radars showing the position of ships relative to a given position.
 module ShipRadar =
     type ShipRadarRenderingAssets =
         { radar : Texture2D
@@ -125,6 +129,7 @@ module ShipRadar =
     let height = 1000
 
     /// Render a 2d radar between coordinates (0,0) and (width - 1, height - 1).
+    /// Meant to be used with a render target.
     let render assets (sb : SpriteBatch) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (positions : TypedVector3<m>[]) =
         let up = TypedVector.cross3(right, heading)
         let getCoords (posOther : TypedVector3<m>) =
