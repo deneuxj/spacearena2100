@@ -8,11 +8,10 @@ open CleverRake.XnaUtils.Units
 
 open InstancedModel
 
-let fieldOfView = MathHelper.ToRadians(60.0f)
+let fieldOfView = MathHelper.ToRadians(60.0f) * 1.0f<rad>
 let ratio = 16.0f / 9.0f
-let nearPlane = 1.0f
-let farPlane = 1e4f
-
+let nearPlane = 1.0f * 1.0f<m>
+let farPlane = 1e4f * 1.0f<m>
 
 module Quads =
     open Microsoft.Xna.Framework.Graphics
@@ -54,14 +53,13 @@ module Quads =
                 pass.Apply()
                 dev.DrawUserIndexedPrimitives<VertexPositionNormalTexture>(PrimitiveType.TriangleList, getVertices theQuad, 0, 4, getIndexes theQuad, 0, 2)
 
-
 /// Render a pattern of asteroids of size V around a given position.
 let renderAsteroids (scaling : float32) (positions : TypedVector3<m>[]) (rotations : Quaternion[]) (radii : float32<m>[]) (V : TypedVector3<m>) (renderer : InstancedModelRenderer) (position : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) =
     let view =
         Matrix.CreateLookAt(Vector3.Zero, heading.v, TypedVector.cross3(right, heading).v)
 
     let projection =
-        Matrix.CreatePerspectiveFieldOfView(fieldOfView, ratio, nearPlane, farPlane)
+        Matrix.CreatePerspectiveFieldOfView(float32 fieldOfView, float32 ratio, float32 nearPlane, float32 farPlane)
 
     let positions =
         positions
@@ -89,7 +87,7 @@ let renderBullets dev (effect : Graphics.Effect) setView setProjection setWorld 
         Matrix.CreateLookAt(position.v, position.v + heading.v, up.v)
 
     let projection =
-        Matrix.CreatePerspectiveFieldOfView(fieldOfView, ratio, nearPlane, farPlane)
+        Matrix.CreatePerspectiveFieldOfView(float32 fieldOfView, float32 ratio, float32 nearPlane, float32 farPlane)
     
     setView view
     setProjection projection
@@ -104,7 +102,7 @@ let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>)
         Matrix.CreateLookAt(position.v, position.v + heading.v, up)
 
     let projection =
-        Matrix.CreatePerspectiveFieldOfView(fieldOfView, ratio, nearPlane, farPlane)
+        Matrix.CreatePerspectiveFieldOfView(float32 fieldOfView, float32 ratio, float32 nearPlane, float32 farPlane)
 
     let inline computeTransform (pos : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (shipType : GameState.ShipType) =
         Matrix.CreateScale(float32 shipType.BoundingSphereRadius)

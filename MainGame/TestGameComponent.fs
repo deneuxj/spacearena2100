@@ -5,6 +5,8 @@ open Microsoft.Xna.Framework
 open CleverRake.XnaUtils
 open CleverRake.XnaUtils.Units
 open CleverRake.XnaUtils.Dispose
+open CleverRake.XnaUtils.ScreenCoordinates
+
 open InstancedModel
 
 open SpaceArena2100.GameState
@@ -141,6 +143,8 @@ type RenderResources =
       radar : Graphics.RenderTarget2D
       radarTexture : Graphics.Texture2D
       dot : Graphics.Texture2D
+      marker : Graphics.Texture2D
+      circle : Graphics.Texture2D
     }
 
 let newComponent (game : Game) =
@@ -176,6 +180,9 @@ let newComponent (game : Game) =
         let radarTexture = content.Load<Graphics.Texture2D>("Content\\radar")
         let dotTexture = content.Load<Graphics.Texture2D>("Content\\spot")
 
+        let marker = content.Load<Graphics.Texture2D>("Content\\marker")
+        let circle = content.Load<Graphics.Texture2D>("Content\\circle")
+
         renderResources :=
             Some {
                 shipRenderer = new InstancedModelRenderer(gdm, ship, InstancingTechnique = instancingTechnique)
@@ -188,6 +195,8 @@ let newComponent (game : Game) =
                 radar = radar
                 radarTexture = radarTexture
                 dot = dotTexture
+                marker = marker
+                circle = circle
             }
 
     let disposeAll() =
@@ -219,6 +228,7 @@ let newComponent (game : Game) =
          state.bullets.pos,
          state.bullets.radii,
          state.ships.posVisible.Content,
+         state.ships.speeds.Content,
          state.ships.headings.Content,
          state.ships.rights.Content,
          description.shipTypes.Content
@@ -282,7 +292,7 @@ let newComponent (game : Game) =
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipHeadings, shipRights, shipTypes) =
+    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipSpeeds, shipHeadings, shipRights, shipTypes) =
         match renderResources.Value with
         | Some r ->
             try
@@ -326,6 +336,11 @@ let newComponent (game : Game) =
                 shipHeadings
                 shipRights
                 shipTypes
+
+            let ww = 1.0f<Screen> * float32 gdm.GraphicsDevice.Viewport.Width
+            let hh = 1.0f<Screen> * float32 gdm.GraphicsDevice.Viewport.Height
+
+            TargetingHud.renderTargeting r.spriteBatch r.marker r.circle ww hh Rendering.fieldOfView Rendering.ratio heading right pos speed shipPos shipSpeeds
 
             try
                 r.spriteBatch.Begin()

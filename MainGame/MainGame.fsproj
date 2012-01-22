@@ -91,6 +91,7 @@
     <Compile Include="ShipControl.fs" />
     <Compile Include="AiSteering.fs" />
     <Compile Include="Rendering.fs" />
+    <Compile Include="TargetingHud.fs" />
     <Compile Include="TestGameComponent.fs" />
     <None Include="Script.fsx" />
   </ItemGroup>
