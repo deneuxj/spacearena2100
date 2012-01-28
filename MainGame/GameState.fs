@@ -30,6 +30,18 @@ with
     member this.InversedMass =
         1.0f / 1000.0f<kg> 
 
+    member this.ToInt() =
+        match this with
+        | Bull -> 0
+        | Hawk -> 1
+        | Sphere -> 2
+
+    static member FromInt(x) =
+        match x with
+        | 0 -> Bull
+        | 1 -> Hawk
+        | _ -> Sphere
+
 /// Global player index
 [<Measure>] type GPI
 
@@ -56,7 +68,6 @@ type Description =
       playerNames : MarkedArray<GPI, string>;
       localPlayersIdxs : int<GPI> list;
       localAiPlayerIdxs : int<GPI> list;
-      remotePlayerIdxs : int<GPI> list;
       shipTypes : MarkedArray<GPI, ShipType>;
       /// Players who left the game early.
       gonePlayerIdxs : int<GPI> list;

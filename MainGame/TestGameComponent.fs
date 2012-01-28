@@ -80,7 +80,6 @@ let newDescription() : Description =
       playerNames = MarkedArray [| "Tester" |];
       localPlayersIdxs = [ 0<GPI> ; 1<GPI> ];
       localAiPlayerIdxs = [ 1<GPI> ];
-      remotePlayerIdxs = [];
       shipTypes = MarkedArray [| Bull ; Bull |];
       gonePlayerIdxs = [];
       asteroids = asteroids;
