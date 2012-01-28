@@ -8,6 +8,7 @@ open Microsoft.Xna.Framework.Net
 
 open CleverRake.XnaUtils
 open CleverRake.XnaUtils.CoopMultiTasking
+open CleverRake.XnaUtils.Random
 
 open GameState
 open Units
@@ -34,6 +35,44 @@ let joinSession (sys : Environment) session =
     }
 
 
+let writeTypedVector3 (writer : PacketWriter) (v : TypedVector3<'M>) =
+    writer.Write(v.v)
+
+
+let readTypedVector3<[<Measure>]'M> (reader : PacketReader) =
+    new TypedVector3<'M>(reader.ReadVector3())
+
+
+let writeIntList (writer : PacketWriter) (xs : int<_> list) =
+    xs |> List.length |> writer.Write
+    xs |> List.iter (fun x -> x |> int |> writer.Write)
+
+
+let readIntList<[<Measure>]'M> (reader : PacketReader) =
+    let n = reader.ReadInt32()
+    [ for i in 1 .. n -> LanguagePrimitives.Int32WithMeasure<'M>(reader.ReadInt32()) ]
+
+
+let receive (session : NetworkSession) (reader : PacketReader) =
+    if session.LocalGamers.Count > 0 then
+        let gamer = session.LocalGamers.[0]
+        if gamer.IsDataAvailable then
+            gamer.ReceiveData(reader)
+            |> Some
+        else
+            let dummyReader = new PacketReader()
+            for i in 1 .. session.LocalGamers.Count - 1 do
+                session.LocalGamers.[i].ReceiveData(dummyReader) |> ignore
+            None
+    else
+        None
+
+
+let broadcast options (session : NetworkSession) (writer : PacketWriter) =
+    if session.LocalGamers.Count > 0 then
+        session.LocalGamers.[0].SendData(writer, options)
+
+
 let buildOctree (fieldSize : float32<m>) (pos : MarkedArray<AstIdx, TypedVector3<m>>) (radius : MarkedArray<AstIdx, float32<m>>) =
     let newBoundingSphere (center : TypedVector3<m>) (radius : float32<m>) =
         new BoundingSphere(center.v, float32 radius)
@@ -57,7 +96,7 @@ let buildOctree (fieldSize : float32<m>) (pos : MarkedArray<AstIdx, TypedVector3
     octree
 
 
-let newDescription (random : System.Random) playerNames (isLocal : bool[]) numHosts numAis =
+let newDescription (random : System.Random) =
     let fieldSize = 5000.0f<m>
     let randomPos() =
         (double fieldSize
@@ -103,313 +142,126 @@ let newDescription (random : System.Random) playerNames (isLocal : bool[]) numHo
           octree = Octree.freeze octree;
           fieldSizes = fieldSize * TypedVector3<1>(Vector3.One);
         }
-
-    let numHumanPlayers = Array.length playerNames
-    let isLocal : MarkedArray<GPI, bool> = MarkedArray isLocal
-    let localPlayerIndexes =
-        [
-            for idx in 0<GPI> .. 1<GPI> .. 1<GPI> * (numHumanPlayers - 1) do
-                if isLocal.[idx] then
-                    yield idx
-        ]
-
-    let numPlayers = numAis + numHumanPlayers
-
-    let rec assignToHost numHosts host idx =
-        seq {
-            if int idx < numAis then
-                yield host, 1<GPI> * (numHumanPlayers + idx)
-                yield! assignToHost numHosts (1 + (host + 1) % numHosts) (idx + 1)
-        }
-
-    let aisAssignment =
-        assignToHost numHosts 1 0
-        |> Seq.toList
-    
-    let myHostId = 1
-    
-    let localAiPlayerIdxs =
-        aisAssignment
-        |> List.choose(fun (host, idx) -> if host = myHostId then Some idx else None)
-
-    let playerNames =
-        Array.append
-            playerNames
-            (Array.init numAis (fun i -> sprintf "HAL%d" (9000 + i)))
-
-    { numPlayers = numPlayers;
-      myHostId = myHostId;
-      playerNames = MarkedArray playerNames;
-      localPlayersIdxs = localPlayerIndexes;
-      localAiPlayerIdxs = localAiPlayerIdxs;
-      shipTypes = MarkedArray (Array.create numPlayers Bull);
+        
+    { numPlayers = 0;
+      myHostId = 1;
+      playerNames = MarkedArray [||];
+      localPlayersIdxs = [];
+      localAiPlayerIdxs = [];
+      shipTypes = MarkedArray [||];
       gonePlayerIdxs = [];
       asteroids = asteroids;
     }
-    ,
-    aisAssignment
 
 
-let sendAsteroids (writer : PacketWriter)(asteroids : Asteroids) =
-    asteroids.fieldSizes.v |> writer.Write
-    asteroids.pos.Content.Length |> writer.Write
-    asteroids.pos.Content |> Seq.iter (fun pos -> writer.Write pos.v)
-    asteroids.radius.Content |> Seq.iter (fun r -> writer.Write (float32 r))
-    asteroids.rotations.Content |> Seq.iter (fun rot -> writer.Write rot)
+/// Units of numerical ids assigned by the XNA framework.
+type [<Measure>] LivePlayer
 
+let addNewShip (random : System.Random) ships =
+    let pos = TypedVector3<m>(random.NextVector3(100.0f))
+    let orientation = random.NextQuaternion()
+    let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
+    let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
 
-let receiveAsteroids (reader : PacketReader) =
-    let V = TypedVector3<m>(reader.ReadVector3())
-    let pos =
-        let n = reader.ReadInt32()
-        [| for i in 1 .. n -> TypedVector3<m>(reader.ReadVector3()) |]
-        |> MarkedArray
-    let radii =
-        let n = reader.ReadInt32()
-        [| for i in 1 .. n -> 1.0f<m> * reader.ReadSingle() |]
-        |> MarkedArray
-    let octree = buildOctree V.X pos radii
-    let rotations =
-        let n = reader.ReadInt32()
-        [| for i in 1 .. n -> reader.ReadQuaternion() |]
-        |> MarkedArray
-    { pos = pos
-      radius = radii
-      rotations = rotations
-      octree = Octree.freeze octree
-      fieldSizes = V }
-
-
-let sendIntList (writer : PacketWriter) (xs : int<_> list) =
-    xs |> List.length |> writer.Write
-    xs |> List.iter (fun x -> x |> int |> writer.Write)
-
-
-let receiveIntList<[<Measure>]'M> (reader : PacketReader) =
-    let n = reader.ReadInt32()
-    [ for i in 1 .. n -> LanguagePrimitives.Int32WithMeasure<'M>(reader.ReadInt32()) ]
-
-
-let sendDescription (writer : PacketWriter) (description : Description) =
-    let d = description
-    d.asteroids |> sendAsteroids writer
-    d.gonePlayerIdxs |> sendIntList writer
-    // Don't send d.localAiPlayerIdxs -> handled by ai player distribution
-    // Don't send d.localPlayersIdxs -> can be retrieved from NetworkSession.AllGamers and NetworkSession.LocalGamers.
-    // Don't send d.myHostId -> handled by player distribution
-    d.numPlayers |> writer.Write
-    // d.playerNames.Content.Length |> writer.Write -> No need, same as numPlayers
-    d.playerNames.Content |> Seq.iter writer.Write
-    d.shipTypes.Content |> Seq.iter (fun x -> x.ToInt() |> writer.Write)
-
-
-let distributePlayers (gamers : NetworkGamer seq) =
-    let mutable nextHostId = 1
-    let hostIdOfHost = new System.Collections.Generic.Dictionary<NetworkMachine, int>()
-    for gamer in gamers do
-        match hostIdOfHost.TryGetValue(gamer.Machine) with
-        | false, _ ->
-            let hostId = nextHostId
-            hostIdOfHost.[gamer.Machine] <- hostId
-            nextHostId <- nextHostId + 1
-        | true, _ -> ()
-
-    gamers
-    |> Seq.map (fun gamer -> hostIdOfHost.[gamer.Machine])
-    |> Seq.toArray
-
-
-let sendPlayerDistribution (writer : PacketWriter) (hostOfPlayer : int[]) =
-    hostOfPlayer.Length |> writer.Write
-    hostOfPlayer |> Array.iter writer.Write
-
-
-let receivePlayerDistribution (reader : PacketReader) =
-    let n = reader.ReadInt32()
-    [| for i in 1 .. n -> reader.ReadInt32() |]
-
-
-let sendAiPlayerDistribution (writer : PacketWriter) (dist : (int * int<GPI>) list) =
-    dist |> List.length |> writer.Write
-    dist |> List.iter (fun (ai, idx) -> writer.Write(ai); writer.Write(int idx))
-
-
-let receiveAiPlayerDistribution (reader : PacketReader) =
-    let n = reader.ReadInt32()
-    [ for i in 1 .. n -> (reader.ReadInt32(), LanguagePrimitives.Int32WithMeasure<GPI>(reader.ReadInt32())) ]
-
-
-let receiveDescription (reader : PacketReader) =
-    let asteroids = receiveAsteroids reader
-    let gonePlayerIdxs = receiveIntList<GPI> reader
-    let numPlayers = reader.ReadInt32()
-    let playerNames =
-        MarkedArray [| for i in 1 .. numPlayers -> reader.ReadString() |]
-    let shipTypes =
-        MarkedArray [| for i in 1 .. numPlayers -> reader.ReadInt32() |> ShipType.FromInt |]
-
-    let playerDist = receivePlayerDistribution reader
-    let aiPlayerDist = receiveAiPlayerDistribution reader
-
-    failwith "TODO"
-
-
-let sendTypedVector3 (writer : PacketWriter) (v : TypedVector3<'M>) =
-    writer.Write(v.v)
-
-
-let receiveTypedVector3<[<Measure>]'M> (reader : PacketReader) =
-    new TypedVector3<'M>(reader.ReadVector3())
-
-
-let makeRandomInitialStateData (rnd : System.Random) numPlayers =
-    let d = 300.0f<m>
-    let rndVec() =
-        let x = rnd.NextDouble() |> float32
-        let y = rnd.NextDouble() |> float32
-        let z = rnd.NextDouble() |> float32
-        if rnd.Next(2) = 0 then
-            -1.0f
-        else
-            1.0f
-        *
-        Vector3(x, y, z)
-
-    let zipped =
-        [|
-            for i in 1 .. numPlayers do                       
-                let pos = d * TypedVector.normalize3(TypedVector3<m>(rndVec()))
-                let heading = TypedVector.normalize3(TypedVector3<m>(rndVec()))
-                let v = TypedVector3<m>(rndVec())
-                let right = TypedVector.cross3(v, heading) |> TypedVector.normalize3
-                yield (pos, heading, right)
-        |]
-
-    Array.unzip3 zipped
-    
-        
-let sendInitialStates (writer : PacketWriter) (pos : TypedVector3<m>[]) (headings : TypedVector3<1>[]) (rights : TypedVector3<1>[]) =
-    let n = Array.length pos
-    pos |> Array.iter (sendTypedVector3 writer)
-    headings |> Array.iter (sendTypedVector3 writer)
-    rights |> Array.iter (sendTypedVector3 writer)
-
-
-let receiveInitialState (reader : PacketReader) numLocalPlayers numLocalAis myHostId =
-    let n = reader.ReadInt32()
-    let pos = MarkedArray [| for i in 1 .. n -> receiveTypedVector3<m> reader |]
-    let headings = MarkedArray [| for i in 1 .. n -> receiveTypedVector3<1> reader |]
-    let rights = MarkedArray [| for i in 1 .. n -> receiveTypedVector3<1> reader |]
-
-    let ships =
-        { headings = headings
-          rights = rights
-          posClient = pos
-          posVisible = pos
-          posHost = pos
-          posLerpT = MarkedArray (Array.zeroCreate n)
-          speeds = MarkedArray (Array.zeroCreate n)
-          accels = MarkedArray (Array.zeroCreate n)
-          health = MarkedArray (Array.create n 1.0f<Health>)
-          numFastBullets = List.init numLocalPlayers (fun _ -> 0)
-          numBigBullets = List.init numLocalPlayers (fun _ -> 0)
-          numMultiFire = List.init numLocalPlayers (fun _ -> 0)
-          numHighRate = List.init numLocalPlayers (fun _ -> 0)
-          timeBeforeFire = List.init numLocalPlayers (fun _ -> 0<dms>)
-          timeBeforeRespawn = List.init numLocalPlayers (fun _ -> -1<dms>)
-          localTargetSpeeds = List.init numLocalPlayers (fun _ -> 0.0f<m/s>)
-          scores = MarkedArray (Array.zeroCreate n)
+    let ships : Ships =
+        { accels = MarkedArray.add (TypedVector3<m/s^2>()) ships.accels
+          headings = MarkedArray.add heading ships.headings
+          rights = MarkedArray.add right ships.rights
+          posHost = MarkedArray.add pos ships.posHost
+          posVisible = MarkedArray.add pos ships.posVisible
+          posClient = MarkedArray.add pos ships.posClient
+          posLerpT = MarkedArray.add 1.0f ships.posLerpT
+          speeds = MarkedArray.add (TypedVector3<m/s>()) ships.speeds
+          health = MarkedArray.add 1.0f<Health> ships.health
+          numFastBullets = 0 :: ships.numFastBullets
+          numBigBullets = 0 :: ships.numBigBullets
+          numMultiFire = 0 :: ships.numMultiFire
+          numHighRate = 0 :: ships.numHighRate
+          timeBeforeFire = 0<dms> :: ships.timeBeforeFire
+          timeBeforeRespawn = -1<dms> :: ships.timeBeforeRespawn
+          localTargetSpeeds = 0.0f<m/s> :: ships.localTargetSpeeds
+          scores = MarkedArray.add 0.0f<Points> ships.scores
         }
 
-    let ais =
-        List.init numLocalAis (fun _ -> Undecided)
-
-    let bullets =
-        { guids = [||]
-          pos = [||]
-          timeLeft = [||]
-          speeds = [||]
-          radii = [||]
-          owners = [||]
-          lastLocalGuid = GameStateUpdate.firstGuid myHostId }
-
-    let supplies =
-        { pos = MarkedArray [||]
-          types = MarkedArray [||]
-          radii = MarkedArray [||] }
-
-    { ships = ships
-      ais = ais
-      bullets = bullets
-      supplies = supplies
-      time = 0<dms> }
+    ships
 
 
-let pumpAll (session : NetworkSession) (reader : PacketReader) =
-    for gamer in session.LocalGamers do
-        while gamer.IsDataAvailable do
-            gamer.ReceiveData(reader) |> ignore
+let addLocalPlayer (random : System.Random) (gamer : LocalNetworkGamer) (description, mapping, state : GameState.State) =
+    let newGPI = description.numPlayers * 1<GPI>
+    let idLive = (int gamer.Id) * 1<LivePlayer>
+    let mapping = Map.add idLive newGPI mapping
+    let description =
+        { description with
+            numPlayers = description.numPlayers + 1
+            playerNames = MarkedArray.add gamer.Gamertag description.playerNames
+            localPlayersIdxs = newGPI :: description.localPlayersIdxs        
+        }
+    let ships = addNewShip random state.ships
+    let state = { state with ships = ships }
+    (description, mapping, state)
 
-let sendToAllMachines (session : NetworkSession) (writer : PacketWriter) options =
-    let machinesAlreadySentTo = new HashSet<_>()
 
-    Maybe.maybe {
-        let! sender =
-            session.LocalGamers
-            |> Seq.tryFind (fun gamer -> gamer.SignedInGamer.Privileges.AllowOnlineSessions)
+let addRemotePlayer (random : System.Random) (gamer : NetworkGamer) (description, mapping, state : GameState.State) =
+    let newGPI = description.numPlayers * 1<GPI>
+    let idLive = (int gamer.Id) * 1<LivePlayer>
+    let mapping = Map.add idLive newGPI mapping
+    let description =
+        { description with
+            numPlayers = description.numPlayers + 1
+            playerNames = MarkedArray.add gamer.Gamertag description.playerNames
+        }
+    let ships = addNewShip random state.ships
+    let state = { state with ships = ships }
+    (description, mapping, state)
 
-        for gamer in session.RemoteGamers do
-            if not <| machinesAlreadySentTo.Contains(gamer.Machine) then
-                machinesAlreadySentTo.Add(gamer.Machine) |> ignore
-                sender.SendData(writer, options, gamer)
-    }
-                
-let initiateGame (sys : Environment) (session : NetworkSession) sessionCancelled =
-    let random = new System.Random()
-    let reliable = SendDataOptions.ReliableInOrder
-    let writer = new PacketWriter()
-    let reader = new PacketReader()
 
-    task {
-        do! sys.WaitUntil(fun () -> session.IsEveryoneReady || sessionCancelled())
-        if not (sessionCancelled()) then
-            session.StartGame()
-            do! sys.Wait(1.0f)
+let addLocalAiPlayer (random : System.Random) (description, state) =
+    let newGPI = description.numPlayers * 1<GPI>
+    let description =
+        { description with
+            numPlayers = description.numPlayers + 1
+            playerNames = MarkedArray.add (sprintf "HAL%d" (9000 + int newGPI)) description.playerNames
+            localPlayersIdxs = newGPI :: description.localPlayersIdxs
+            localAiPlayerIdxs = newGPI :: description.localAiPlayerIdxs
+        }
+    let ais = GameState.AiState.Undecided :: state.ais
+    let ships = addNewShip random state.ships
+    let state = { state with ships = ships ; ais = ais }
+    (description, state)
 
-            let hosts =
-                session.AllGamers
-                |> Seq.map (fun gamer -> gamer.Machine)
-                |> Seq.distinct
-                |> Seq.toArray
-            let numAisPerHost = 5
-            let playerNames =
-                session.AllGamers
-                |> Seq.map (fun gamer -> gamer.Gamertag)
-                |> Seq.toArray
-            let isLocal =
-                session.AllGamers
-                |> Seq.map (fun gamer -> gamer.IsLocal)
-                |> Seq.toArray
+    
+type DescriptionManager() =
+    let description = ref None
+    let playerIdMap : Map<int<LivePlayer>, int<GPI>> ref = ref (Map.empty)
 
-            let description, aiDistribution =
-                newDescription random playerNames isLocal hosts.Length (hosts.Length * numAisPerHost)
-            let playerDistribution = distributePlayers session.AllGamers
-            sendDescription writer description
-            sendPlayerDistribution writer playerDistribution
-            sendAiPlayerDistribution writer aiDistribution
+    member this.Description
+        with get() =
+            match description.Value with
+            | None -> invalidOp "No description set"
+            | Some d -> d
+        and set(y) =
+            description := Some y
 
-            let pos, headings, rights = makeRandomInitialStateData random description.numPlayers
-            sendInitialStates writer pos headings rights
+    member this.LocalPlayerControls : PlayerIndex option [] = failwith "TODO"
+    member this.AddLocalPlayer(gamer : LocalNetworkGamer, idx : PlayerIndex) = failwith "TODO"
+    member this.AddLocalAiPlayer() = failwith "TODO"
+    member this.AddRemotePlayer(gamer : NetworkGamer) = failwith "TODO"
+    member this.RemoveLocalPlayer(gamer : LocalNetworkGamer) = failwith "TODO"
+    member this.RemoveRemotePlayer(gamer : NetworkGamer) = failwith "TODO"
+            
 
-            let comGamer = session.LocalGamers.[0]
-            comGamer.SendData(writer, reliable)
-                
-            do! sys.WaitUntil(fun () -> comGamer.IsDataAvailable)
+type Server(sys, sessionType) =
+    let seed = int32 <| System.DateTime.Now.Ticks % (1L + int64 Int32.MaxValue)
+    let random = new System.Random(seed)
 
-            let _, sender = session.LocalGamers.[0].ReceiveData(reader)
-            let initialState = receiveInitialState reader (List.length description.localPlayersIdxs) (List.length description.localAiPlayerIdxs) description.myHostId
+    let description = newDescription random
+    let descriptionManager = new DescriptionManager(Description = description)
+    let session = ref None
 
-            return Some(description, initialState)
-        else
-            return None
-    }
+    member this.Run =
+        task {
+            let! s = newSession sys sessionType
+            session := Some s
+            s.GamerJoined.Add (fun gamerJoined -> ())
+            s.GamerLeft.Add (fun gamerLeft -> ())
+        }
