@@ -229,7 +229,17 @@ let addLocalAiPlayer (random : System.Random) (description, state) =
     let state = { state with ships = ships ; ais = ais }
     (description, state)
 
-    
+
+let removePlayer (gamer : NetworkGamer) map description =
+    match Map.tryFind ((int gamer.Id) * 1<LivePlayer>) map with
+    | Some idx ->
+        let description =
+            { description with
+                gonePlayerIdxs = idx :: description.gonePlayerIdxs }
+        description
+    | None -> failwith "No player with that Live id"
+
+
 type DescriptionManager() =
     let description = ref None
     let playerIdMap : Map<int<LivePlayer>, int<GPI>> ref = ref (Map.empty)
