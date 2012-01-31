@@ -73,6 +73,11 @@ let broadcast options (session : NetworkSession) (writer : PacketWriter) =
         session.LocalGamers.[0].SendData(writer, options)
 
 
+let send options (session : NetworkSession) (destination : NetworkGamer) (writer : PacketWriter) =
+    if session.LocalGamers.Count > 0 then
+        session.LocalGamers.[0].SendData(writer, options, destination)
+
+
 let buildOctree (fieldSize : float32<m>) (pos : MarkedArray<AstIdx, TypedVector3<m>>) (radius : MarkedArray<AstIdx, float32<m>>) =
     let newBoundingSphere (center : TypedVector3<m>) (radius : float32<m>) =
         new BoundingSphere(center.v, float32 radius)
@@ -239,26 +244,6 @@ let removePlayer (gamer : NetworkGamer) map description =
                 localPlayersIdxs = description.localPlayersIdxs |> List.filter ((<>) idx) }
         description
     | None -> failwith "No player with that Live id"
-
-
-type DescriptionManager() =
-    let description = ref None
-    let playerIdMap : Map<int<LivePlayer>, int<GPI>> ref = ref (Map.empty)
-
-    member this.Description
-        with get() =
-            match description.Value with
-            | None -> invalidOp "No description set"
-            | Some d -> d
-        and set(y) =
-            description := Some y
-
-    member this.LocalPlayerControls : PlayerIndex option [] = failwith "TODO"
-    member this.AddLocalPlayer(gamer : LocalNetworkGamer, idx : PlayerIndex) = failwith "TODO"
-    member this.AddLocalAiPlayer() = failwith "TODO"
-    member this.AddRemotePlayer(gamer : NetworkGamer) = failwith "TODO"
-    member this.RemoveLocalPlayer(gamer : LocalNetworkGamer) = failwith "TODO"
-    member this.RemoveRemotePlayer(gamer : NetworkGamer) = failwith "TODO"
             
 
 type Server(sys, sessionType) =
@@ -266,13 +251,42 @@ type Server(sys, sessionType) =
     let random = new System.Random(seed)
 
     let description = newDescription random
-    let descriptionManager = new DescriptionManager(Description = description)
+    let newGamers = ref []
+    let removedGamers = ref []
+    let packetWriter = new PacketWriter()
+    let mapping = ref Map.empty
     let session = ref None
 
     member this.Run =
         task {
             let! s = newSession sys sessionType
             session := Some s
-            s.GamerJoined.Add (fun gamerJoined -> ())
-            s.GamerLeft.Add (fun gamerLeft -> ())
+            s.GamerJoined.Add (fun gamerJoined -> newGamers := gamerJoined.Gamer :: newGamers.Value)
+            s.GamerLeft.Add (fun gamerLeft -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
+            return (s, description)
         }
+
+    member this.Update(description, state) =
+        match session.Value with
+        | Some session ->
+            let description, m, state =
+                newGamers.Value
+                |> List.fold (fun dms gamer ->
+                    match gamer with
+                    | :? LocalNetworkGamer as gamer ->
+                        addLocalPlayer random gamer dms
+                    | _ ->
+                        packetWriter.Write(seed)
+                        send SendDataOptions.ReliableInOrder session gamer packetWriter
+                        addRemotePlayer random gamer dms
+                    )
+                    (description, mapping.Value, state)
+            let description =
+                removedGamers.Value
+                |> List.fold (fun d gamer -> removePlayer gamer m d) description
+            newGamers := []
+            removedGamers := []
+            mapping := m
+            (description, state)
+        | None ->
+            (description, state)
