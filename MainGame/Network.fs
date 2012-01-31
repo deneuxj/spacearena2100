@@ -235,7 +235,8 @@ let removePlayer (gamer : NetworkGamer) map description =
     | Some idx ->
         let description =
             { description with
-                gonePlayerIdxs = idx :: description.gonePlayerIdxs }
+                gonePlayerIdxs = idx :: description.gonePlayerIdxs
+                localPlayersIdxs = description.localPlayersIdxs |> List.filter ((<>) idx) }
         description
     | None -> failwith "No player with that Live id"
 
