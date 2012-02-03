@@ -378,3 +378,8 @@ type Participants(sys, session : NetworkSession, seed, random, unsubscribe) =
         removedGamers := []
         mapping := m
         (description, state)
+
+    member this.Dispose() = unsubscribe.Value()
+
+    interface System.IDisposable with
+        member this.Dispose() = this.Dispose()
