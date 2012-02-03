@@ -119,6 +119,17 @@ module BulletConstants =
     let multiFireSpread = MathHelper.ToRadians(5.0f) * 1.0f<rad>
     let density = 1000.0f<kg/m^3>
 
+/// Check if a bullet guid was produced by a specific host.
+let guidIsLocal hostNumber (guid : int<BulletGuid>) =
+    (int guid &&& 0xFF) = hostNumber
+
+/// Get the next bullet guid number.
+let nextGuid last =
+    last + 256<BulletGuid>
+
+/// Get the first bullet guid of a given host.
+let firstGuid hostNumber = 1<BulletGuid> * hostNumber
+
 type Supplies =
     { pos : MarkedArray<GSI, Vector3>;
       types : MarkedArray<GSI, SupplyType>;
@@ -138,6 +149,49 @@ type State =
       bullets : Bullets;
       supplies : Supplies;      
       time : int<dms>;
+    }
+
+let emptyState hostId =
+    let ships =
+        { headings = MarkedArray [||]
+          rights = MarkedArray [||]
+          posClient = MarkedArray [||]
+          posVisible = MarkedArray [||]
+          posHost = MarkedArray [||]
+          posLerpT = MarkedArray [||]
+          speeds = MarkedArray [||]
+          accels = MarkedArray [||]
+          health = MarkedArray [||]
+          numFastBullets = []
+          numBigBullets = []
+          numMultiFire = []
+          numHighRate = []
+          timeBeforeFire = []
+          timeBeforeRespawn = []
+          localTargetSpeeds = []
+          scores = MarkedArray [||]
+        }
+
+    let bullets =
+        { guids = [||]
+          pos = [||]
+          timeLeft = [||]
+          speeds = [||]
+          radii = [||]
+          owners = [||]
+          lastLocalGuid = firstGuid hostId
+        }
+
+    let supplies =
+        { pos = MarkedArray [||]
+          types = MarkedArray [||]
+          radii = MarkedArray [||] }
+
+    { ships = ships
+      bullets = bullets
+      ais = []
+      supplies = supplies
+      time = 0<dms>
     }
 
 let getBulletSpeed (localPlayers : int<GPI> list) (ships : Ships) (player : int<GPI>) =

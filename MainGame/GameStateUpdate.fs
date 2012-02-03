@@ -434,17 +434,6 @@ let integrateBullets dt (bullets : Bullets) =
         pos = newPos
         timeLeft = newTimeLeft }
 
-/// Check if a bullet guid was produced by a specific host.
-let guidIsLocal hostNumber (guid : int<BulletGuid>) =
-    (int guid &&& 0xFF) = hostNumber
-
-/// Get the next bullet guid number.
-let nextGuid last =
-    last + 256<BulletGuid>
-
-/// Get the first bullet guid of a given host.
-let firstGuid hostNumber = 1<BulletGuid> * hostNumber
-
 let stop() =
     ()
 

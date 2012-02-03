@@ -149,7 +149,7 @@ let newDescription (random : System.Random) =
         }
         
     { numPlayers = 0;
-      myHostId = 1;
+      myHostId = failwith "TODO";
       playerNames = MarkedArray [||];
       localPlayersIdxs = [];
       localAiPlayerIdxs = [];
