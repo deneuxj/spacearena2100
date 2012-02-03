@@ -245,48 +245,136 @@ let removePlayer (gamer : NetworkGamer) map description =
         description
     | None -> failwith "No player with that Live id"
             
+type SessionMode = Server | Client
 
-type Server(sys, sessionType) =
-    let seed = int32 <| System.DateTime.Now.Ticks % (1L + int64 Int32.MaxValue)
-    let random = new System.Random(seed)
+let tryFindSession (sys : Environment) sessionType =
+    let rnd = new Random()
 
-    let description = newDescription random
+    task {
+        let attemptDuration = float32 <| rnd.Next(15)
+        let attemptTimer = sys.NewStopwatch()
+        attemptTimer.Start()
+        let session = ref None
+        while attemptTimer.ElapsedSeconds < attemptDuration && session.Value.IsNone do
+            let! sessions = findAnySession sys sessionType
+            if sessions.Count > 0 then
+                session := Some sessions.[0]
+        return session.Value
+    }
+
+let joinOrStart (sys : Environment) sessionType =
+    task {
+        let! session = tryFindSession sys sessionType
+        let mode =
+            match session with
+            | None -> Server
+            | Some _ -> Client
+
+        let! session =
+            match session with
+            | None -> newSession sys sessionType
+            | Some s -> joinSession sys s
+
+        match mode with
+        | Server ->
+            session.AllowHostMigration <- true
+            session.AllowJoinInProgress <- true
+        | Client -> ()
+        return mode, session
+    }
+
+let waitUntilLocalPlayerJoined (sys : Environment) (session : NetworkSession) =
+    task {
+        let localPlayer = ref None
+        while localPlayer.Value.IsNone do
+            let! newPlayer = sys.AwaitEvent(session.GamerJoined)
+            if newPlayer.Gamer.IsLocal then
+                localPlayer := Some <| (newPlayer.Gamer :?> LocalNetworkGamer)
+        return localPlayer
+    }
+
+let sendSeed session (seed : int32) (gamerJoined : GamerJoinedEventArgs) =
+    let packetWriter = new PacketWriter()
+    packetWriter.Write(seed)
+    send SendDataOptions.ReliableInOrder session gamerJoined.Gamer packetWriter
+
+let startServer (sys : Environment) (session : NetworkSession) (seed : int32) =
+    task {
+        let! _ = waitUntilLocalPlayerJoined sys session
+        let playerJoinedSubscription =
+            session.GamerJoined.Subscribe(
+                fun (gamerJoined : GamerJoinedEventArgs) ->
+                    if not <| gamerJoined.Gamer.IsLocal then sendSeed session seed gamerJoined
+            )
+        return playerJoinedSubscription
+    }
+
+let start sys sessionType =
+    task {
+        let! mode, session = joinOrStart sys sessionType
+        let! seed, random, description, unsubscribe =
+            match mode with
+            | Server ->
+                task {
+                    let seed = int32 <| System.DateTime.Now.Ticks % (1L + int64 Int32.MaxValue)
+                    let random = new System.Random(seed)
+                    let description = newDescription random
+                    let! subscription = startServer sys session seed
+                    return seed, random, description, fun () -> subscription.Dispose()
+                }
+            | Client ->
+                let reader = new PacketReader()
+                task {
+                    let! _ = waitUntilLocalPlayerJoined sys session
+                    let seed = ref None
+                    while seed.Value.IsNone do
+                        match receive session reader with
+                        | None -> ()
+                        | Some _ -> seed := Some <| reader.ReadInt32()
+                    let random = new System.Random(seed.Value.Value)
+                    let description = newDescription random
+                    return seed.Value.Value, random, description, fun () -> ()
+                }
+        return seed, random, description, unsubscribe
+    }
+
+type Participants(sys, session : NetworkSession, seed, random, unsubscribe) =
     let newGamers = ref []
     let removedGamers = ref []
     let packetWriter = new PacketWriter()
     let mapping = ref Map.empty
-    let session = ref None
+    let unsubscribe = ref unsubscribe
 
-    member this.Run =
-        task {
-            let! s = newSession sys sessionType
-            session := Some s
-            s.GamerJoined.Add (fun gamerJoined -> newGamers := gamerJoined.Gamer :: newGamers.Value)
-            s.GamerLeft.Add (fun gamerLeft -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
-            return (s, description)
-        }
+    let updateSubscription (hostChanged : HostChangedEventArgs) =
+        unsubscribe.Value()
+        if hostChanged.NewHost.IsLocal then
+            let subscription =
+                session.GamerJoined.Subscribe(
+                    fun (gamerJoined : GamerJoinedEventArgs) ->
+                        if not <| gamerJoined.Gamer.IsLocal then sendSeed session seed gamerJoined)
+            unsubscribe := fun () -> subscription.Dispose()
+        else
+            unsubscribe := fun () -> ()
+    do
+        session.GamerJoined.Add (fun gamerJoined -> newGamers := gamerJoined.Gamer :: newGamers.Value)
+        session.GamerLeft.Add (fun gamerLeft -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
+        session.HostChanged.Add updateSubscription
 
     member this.Update(description, state) =
-        match session.Value with
-        | Some session ->
-            let description, m, state =
-                newGamers.Value
-                |> List.fold (fun dms gamer ->
-                    match gamer with
-                    | :? LocalNetworkGamer as gamer ->
-                        addLocalPlayer random gamer dms
-                    | _ ->
-                        packetWriter.Write(seed)
-                        send SendDataOptions.ReliableInOrder session gamer packetWriter
-                        addRemotePlayer random gamer dms
-                    )
-                    (description, mapping.Value, state)
-            let description =
-                removedGamers.Value
-                |> List.fold (fun d gamer -> removePlayer gamer m d) description
-            newGamers := []
-            removedGamers := []
-            mapping := m
-            (description, state)
-        | None ->
-            (description, state)
+        let description, m, state =
+            newGamers.Value
+            |> List.fold (fun dms gamer ->
+                match gamer with
+                | :? LocalNetworkGamer as gamer ->
+                    addLocalPlayer random gamer dms
+                | _ ->
+                    addRemotePlayer random gamer dms
+                )
+                (description, mapping.Value, state)
+        let description =
+            removedGamers.Value
+            |> List.fold (fun d gamer -> removePlayer gamer m d) description
+        newGamers := []
+        removedGamers := []
+        mapping := m
+        (description, state)
