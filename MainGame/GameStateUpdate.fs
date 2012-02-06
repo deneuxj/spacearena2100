@@ -1,20 +1,31 @@
 ﻿module SpaceArena2100.GameStateUpdate
 
 open Microsoft.Xna.Framework
+
 open CleverRake.XnaUtils
+open CleverRake.XnaUtils.Random
 
 open Units
 open GameState
 open WarpCoord
 
+type ShipPosition =
+    { position : TypedVector3<m>
+      heading : TypedVector3<1>
+      right : TypedVector3<1>
+    }
+
 /// Synchronization message types sent over the network
 type RemoteEvent =
     | DamageAndImpulse of int<GPI> * float32<Health> * TypedVector3<m/s> // Ship idx, damage, impulse
     | BulletDestroyed of int<BulletGuid> // Bullet GUID
-    | ShipState of int<GPI> * TypedVector3<m> * TypedVector3<1> * TypedVector3<1> * TypedVector3<m/s> * TypedVector3<N> // Ship idx, position, heading, right, speed, thrust
+    | ShipState of int<GPI> * ShipPosition * TypedVector3<m/s> * TypedVector3<N> // Ship idx, position, heading, right, speed, thrust
+    | ShipDestroyed of int<GPI> // Ship idx
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
     | SupplySpawn of int<GSI> * Vector3 * float<m> * SupplyType // Supply idx, position, radius, type
     | SupplyGrabbed of int<GSI> // Supply idx
+    | PlayerJoined of int<GPI> * string * ShipPosition // Ship idx, player name
+    | PlayerLeft of int<GPI> // Ship idx
 
 /// A synchronization event with the time at which it was sent.
 type TimedRemoteEvent =
@@ -392,7 +403,7 @@ let updateDeadReckoning frameDt (now : int<dms>) (ships : Ships) (shipTypes : Ma
         events
         |> Array.choose (
             function
-            | { time = t; event = ShipState (shipIdx, pos, heading, right, speed, force) } -> Some (shipIdx, (t, pos, heading, right, speed, force))
+            | { time = t; event = ShipState (shipIdx, { position = pos; heading = heading; right = right }, speed, force) } -> Some (shipIdx, (t, pos, heading, right, speed, force))
             | _ -> None)
         |> Map.ofSeq
 
@@ -434,14 +445,58 @@ let integrateBullets dt (bullets : Bullets) =
         pos = newPos
         timeLeft = newTimeLeft }
 
-let stop() =
-    ()
+
+let addNewShipRandom (random : System.Random) ships =
+    let pos = TypedVector3<m>(random.NextVector3(100.0f))
+    let orientation = random.NextQuaternion()
+    let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
+    let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
+
+    let ships : Ships =
+        { accels = MarkedArray.add (TypedVector3<m/s^2>()) ships.accels
+          headings = MarkedArray.add heading ships.headings
+          rights = MarkedArray.add right ships.rights
+          posHost = MarkedArray.add pos ships.posHost
+          posVisible = MarkedArray.add pos ships.posVisible
+          posClient = MarkedArray.add pos ships.posClient
+          posLerpT = MarkedArray.add 1.0f ships.posLerpT
+          speeds = MarkedArray.add (TypedVector3<m/s>()) ships.speeds
+          health = MarkedArray.add 1.0f<Health> ships.health
+          numFastBullets = 0 :: ships.numFastBullets
+          numBigBullets = 0 :: ships.numBigBullets
+          numMultiFire = 0 :: ships.numMultiFire
+          numHighRate = 0 :: ships.numHighRate
+          timeBeforeFire = 0<dms> :: ships.timeBeforeFire
+          timeBeforeRespawn = -1<dms> :: ships.timeBeforeRespawn
+          localTargetSpeeds = 0.0f<m/s> :: ships.localTargetSpeeds
+          scores = MarkedArray.add 0.0f<Points> ships.scores
+        }
+
+    ships
+
+
+let addNewShip (position : ShipPosition) ships =
+    { accels = MarkedArray.add (TypedVector3<m/s^2>()) ships.accels
+      headings = MarkedArray.add position.heading ships.headings
+      rights = MarkedArray.add position.right ships.rights
+      posHost = MarkedArray.add position.position ships.posHost
+      posVisible = MarkedArray.add position.position ships.posVisible
+      posClient = MarkedArray.add position.position ships.posClient
+      posLerpT = MarkedArray.add 1.0f ships.posLerpT
+      speeds = MarkedArray.add (TypedVector3<m/s>()) ships.speeds
+      health = MarkedArray.add 1.0f<Health> ships.health
+      numFastBullets = 0 :: ships.numFastBullets
+      numBigBullets = 0 :: ships.numBigBullets
+      numMultiFire = 0 :: ships.numMultiFire
+      numHighRate = 0 :: ships.numHighRate
+      timeBeforeFire = 0<dms> :: ships.timeBeforeFire
+      timeBeforeRespawn = -1<dms> :: ships.timeBeforeRespawn
+      localTargetSpeeds = 0.0f<m/s> :: ships.localTargetSpeeds
+      scores = MarkedArray.add 0.0f<Points> ships.scores
+    }
 
 /// Update the game state.
 let update dt (description : Description) events forces headings rights (state : State) =
-    if events |> Array.filter (function { event = BulletFired _ } -> true | _ -> false) |> Array.isEmpty |> not then
-        stop()
-
     let guidIsLocal = guidIsLocal (description.myHostId)
     
     updateDeadReckoning dt state.time state.ships description.shipTypes events

@@ -19,3 +19,6 @@ let dmsPerS_f = 10000.0f<dms/s>
 
 /// Create an int<dms> from a float32<s>
 let dmsFromS (s : float32<s>) = intFromFloat32 (s * dmsPerS_f)
+
+/// Units of numerical ids assigned by the XNA framework.
+type [<Measure>] LivePlayer

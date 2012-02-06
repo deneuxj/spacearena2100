@@ -11,6 +11,7 @@ open CleverRake.XnaUtils.CoopMultiTasking
 open CleverRake.XnaUtils.Random
 
 open GameState
+open GameStateUpdate
 open Units
 
 let newSession (sys : Environment) sessionType =
@@ -159,90 +160,9 @@ let newDescription (random : System.Random) =
     }
 
 
-/// Units of numerical ids assigned by the XNA framework.
-type [<Measure>] LivePlayer
-
-let addNewShip (random : System.Random) ships =
-    let pos = TypedVector3<m>(random.NextVector3(100.0f))
-    let orientation = random.NextQuaternion()
-    let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
-    let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
-
-    let ships : Ships =
-        { accels = MarkedArray.add (TypedVector3<m/s^2>()) ships.accels
-          headings = MarkedArray.add heading ships.headings
-          rights = MarkedArray.add right ships.rights
-          posHost = MarkedArray.add pos ships.posHost
-          posVisible = MarkedArray.add pos ships.posVisible
-          posClient = MarkedArray.add pos ships.posClient
-          posLerpT = MarkedArray.add 1.0f ships.posLerpT
-          speeds = MarkedArray.add (TypedVector3<m/s>()) ships.speeds
-          health = MarkedArray.add 1.0f<Health> ships.health
-          numFastBullets = 0 :: ships.numFastBullets
-          numBigBullets = 0 :: ships.numBigBullets
-          numMultiFire = 0 :: ships.numMultiFire
-          numHighRate = 0 :: ships.numHighRate
-          timeBeforeFire = 0<dms> :: ships.timeBeforeFire
-          timeBeforeRespawn = -1<dms> :: ships.timeBeforeRespawn
-          localTargetSpeeds = 0.0f<m/s> :: ships.localTargetSpeeds
-          scores = MarkedArray.add 0.0f<Points> ships.scores
-        }
-
-    ships
-
-
-let addLocalPlayer (random : System.Random) (gamer : LocalNetworkGamer) (description, mapping, state : GameState.State) =
-    let newGPI = description.numPlayers * 1<GPI>
-    let idLive = (int gamer.Id) * 1<LivePlayer>
-    let mapping = Map.add idLive newGPI mapping
-    let description =
-        { description with
-            numPlayers = description.numPlayers + 1
-            playerNames = MarkedArray.add gamer.Gamertag description.playerNames
-            localPlayersIdxs = newGPI :: description.localPlayersIdxs        
-        }
-    let ships = addNewShip random state.ships
-    let state = { state with ships = ships }
-    (description, mapping, state)
-
-
-let addRemotePlayer (random : System.Random) (gamer : NetworkGamer) (description, mapping, state : GameState.State) =
-    let newGPI = description.numPlayers * 1<GPI>
-    let idLive = (int gamer.Id) * 1<LivePlayer>
-    let mapping = Map.add idLive newGPI mapping
-    let description =
-        { description with
-            numPlayers = description.numPlayers + 1
-            playerNames = MarkedArray.add gamer.Gamertag description.playerNames
-        }
-    let ships = addNewShip random state.ships
-    let state = { state with ships = ships }
-    (description, mapping, state)
-
-
-let addLocalAiPlayer (random : System.Random) (description, state) =
-    let newGPI = description.numPlayers * 1<GPI>
-    let description =
-        { description with
-            numPlayers = description.numPlayers + 1
-            playerNames = MarkedArray.add (sprintf "HAL%d" (9000 + int newGPI)) description.playerNames
-            localPlayersIdxs = newGPI :: description.localPlayersIdxs
-            localAiPlayerIdxs = newGPI :: description.localAiPlayerIdxs
-        }
-    let ais = GameState.AiState.Undecided :: state.ais
-    let ships = addNewShip random state.ships
-    let state = { state with ships = ships ; ais = ais }
-    (description, state)
-
-
 let removePlayer (gamer : NetworkGamer) map description =
     match Map.tryFind ((int gamer.Id) * 1<LivePlayer>) map with
-    | Some idx ->
-        let description =
-            { description with
-                gonePlayerIdxs = idx :: description.gonePlayerIdxs
-                localPlayersIdxs = description.localPlayersIdxs |> List.filter ((<>) idx) }
-        description
+    | Some idx -> removePlayerFromDescription idx description
     | None -> failwith "No player with that Live id"
             
 type SessionMode = Server | Client
@@ -338,12 +258,13 @@ let start sys sessionType =
         return seed, random, description, unsubscribe
     }
 
-type Participants(sys, session : NetworkSession, seed, random, unsubscribe) =
-    let newGamers = ref []
-    let removedGamers = ref []
+type Participants(sys, session : NetworkSession, seed, random : System.Random, unsubscribe) =
+    let newGamers : NetworkGamer list ref = ref []
+    let removedGamers : NetworkGamer list ref = ref []
     let packetWriter = new PacketWriter()
     let mapping = ref Map.empty
     let unsubscribe = ref unsubscribe
+    let allMessages = ref []
 
     let updateSubscription (hostChanged : HostChangedEventArgs) =
         unsubscribe.Value()
@@ -355,31 +276,79 @@ type Participants(sys, session : NetworkSession, seed, random, unsubscribe) =
             unsubscribe := fun () -> subscription.Dispose()
         else
             unsubscribe := fun () -> ()
-    do
-        session.GamerJoined.Add (fun gamerJoined -> newGamers := gamerJoined.Gamer :: newGamers.Value)
-        session.GamerLeft.Add (fun gamerLeft -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
-        session.HostChanged.Add updateSubscription
 
-    member this.Update(description, state) =
-        let description, m, state =
-            newGamers.Value
-            |> List.fold (fun dms gamer ->
-                match gamer with
-                | :? LocalNetworkGamer as gamer ->
-                    addLocalPlayer random gamer dms
-                | _ ->
-                    addRemotePlayer random gamer dms
-                )
-                (description, mapping.Value, state)
-        let description =
-            removedGamers.Value
-            |> List.fold (fun d gamer -> removePlayer gamer m d) description
+    let isHost() =
+        session.AllGamers
+        |> Seq.exists(fun g -> g.IsLocal && g.IsHost)
+
+    
+    let gamerJoinedSubscription = session.GamerJoined.Subscribe (fun (gamerJoined : GamerJoinedEventArgs) -> newGamers := gamerJoined.Gamer :: newGamers.Value)
+    let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
+    let hostChangedSubscription = session.HostChanged.Subscribe updateSubscription
+
+    member this.Update(numPlayers) =
+        if isHost() then
+            for newPlayer in newGamers.Value do
+                failwith "TODO" // Send all messages to new player.
+
+        let messages, mapping' =
+            if isHost() then
+                let newGPIs =
+                    newGamers.Value
+                    |> List.mapi (fun i _ -> 1<GPI> * (numPlayers + i))
+
+                let mapping =
+                    List.zip newGamers.Value newGPIs
+                    |> List.fold (fun m (g, gpi) -> Map.add (1<LivePlayer> * int g.Id) gpi m) mapping.Value
+
+                let newShipPositions =
+                    newGPIs
+                    |> List.map (fun _ ->
+                        let pos = TypedVector3<m>(random.NextVector3(100.0f))
+                        let orientation = random.NextQuaternion()
+                        let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
+                        let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
+                        { position = pos
+                          heading = heading
+                          right = right })
+
+                let newNames =
+                    newGamers.Value
+                    |> Seq.map (fun g -> g.Gamertag)
+                    |> List.ofSeq
+
+                let playerAddedMessages =
+                    List.zip3 newGPIs newNames newShipPositions
+                    |> List.map PlayerJoined
+
+                let playerRemovedMessages =
+                    removedGamers.Value
+                    |> Seq.choose (fun g -> mapping.TryFind (1<LivePlayer> * int g.Id))
+                    |> Seq.map PlayerLeft
+                    |> List.ofSeq
+
+                playerAddedMessages @ playerRemovedMessages, mapping
+            else
+                [], mapping.Value
+
         newGamers := []
         removedGamers := []
-        mapping := m
-        (description, state)
+        mapping := mapping'
+        allMessages := messages @ allMessages.Value
 
-    member this.Dispose() = unsubscribe.Value()
+        failwith "TODO" // send new messages to everyone.
+
+    member this.HasLocalPlayers =
+        session.AllGamers
+        |> Seq.exists (fun g -> g.IsLocal)
+
+    member this.AddAiPlayer() = failwith "TODO"
+        
+    member this.Dispose() =
+        unsubscribe.Value()
+        hostChangedSubscription.Dispose()
+        gamerLeftSubscription.Dispose()
+        gamerJoinedSubscription.Dispose()
 
     interface System.IDisposable with
         member this.Dispose() = this.Dispose()
