@@ -22,8 +22,8 @@ type RemoteEvent =
     | ShipState of int<GPI> * ShipPosition * TypedVector3<m/s> * TypedVector3<N> // Ship idx, position, heading, right, speed, thrust
     | ShipDestroyed of int<GPI> // Ship idx
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
-    | SupplySpawn of int<GSI> * Vector3 * float<m> * SupplyType // Supply idx, position, radius, type
-    | SupplyGrabbed of int<GSI> // Supply idx
+    | SupplySpawned of int<GSI> * TypedVector3<m> * float32<m> * SupplyType // Supply idx, position, radius, type
+    | SupplyDisappeared of int<GSI> // Supply idx
     | PlayerJoined of int<GPI> * string * ShipPosition // Ship idx, player name
     | PlayerLeft of int<GPI> // Ship idx
 

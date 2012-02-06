@@ -44,6 +44,24 @@ let readTypedVector3<[<Measure>]'M> (reader : PacketReader) =
     new TypedVector3<'M>(reader.ReadVector3())
 
 
+let writeTypedInt (writer : PacketWriter) (v : int<_>) =
+    writer.Write(int v)
+
+
+let readTypedInt<[<Measure>]'M> (reader : PacketReader) =
+    reader.ReadInt32()
+    |> LanguagePrimitives.Int32WithMeasure<'M>
+
+
+let writeTypedFloat (writer : PacketWriter) (v : float32<_>) =
+    writer.Write(int v)
+
+
+let readTypedFloat<[<Measure>]'M> (reader : PacketReader) =
+    reader.ReadSingle()
+    |> LanguagePrimitives.Float32WithMeasure<'M>
+
+
 let writeIntList (writer : PacketWriter) (xs : int<_> list) =
     xs |> List.length |> writer.Write
     xs |> List.iter (fun x -> x |> int |> writer.Write)
@@ -52,6 +70,140 @@ let writeIntList (writer : PacketWriter) (xs : int<_> list) =
 let readIntList<[<Measure>]'M> (reader : PacketReader) =
     let n = reader.ReadInt32()
     [ for i in 1 .. n -> LanguagePrimitives.Int32WithMeasure<'M>(reader.ReadInt32()) ]
+
+
+let writePosition (writer : PacketWriter) pos =
+    writeTypedVector3 writer pos.position
+    writeTypedVector3 writer pos.heading
+    writeTypedVector3 writer pos.right
+
+
+let readPosition (reader : PacketReader) =
+    { position = readTypedVector3 reader
+      heading = readTypedVector3 reader
+      right = readTypedVector3 reader }
+
+
+let writeSupplyType (writer : PacketWriter) supType =
+    match supType with
+    | FastBullets -> writer.Write(0uy)
+    | BigBullets -> writer.Write(1uy)
+    | HighRate -> writer.Write(2uy)
+    | MultiFire -> writer.Write(3uy)
+
+
+let readSupplyType (reader : PacketReader) =
+    match reader.ReadByte() with
+    | 0uy -> FastBullets
+    | 1uy -> BigBullets
+    | 2uy -> HighRate
+    | 3uy -> MultiFire
+    | _ -> failwith "Unrecognized value for a supply type"
+
+
+let writeRemoteEvent (writer : PacketWriter) ev =
+    match ev with
+    | DamageAndImpulse(idx, damage, impulse) ->
+        writer.Write(0uy)
+        writeTypedInt writer idx
+        writeTypedFloat writer damage
+        writeTypedVector3 writer impulse
+    | BulletDestroyed(idx) ->
+        writer.Write(1uy)
+        writeTypedInt writer idx
+    | ShipState(idx, pos, speed, thrust) ->
+        writer.Write(2uy)
+        writeTypedInt writer idx
+        writePosition writer pos
+        writeTypedVector3 writer speed
+        writeTypedVector3 writer thrust
+    | ShipDestroyed(idx) ->
+        writer.Write(3uy)
+        writeTypedInt writer idx
+    | BulletFired(idx, owner, radius, pos, speed) ->
+        writer.Write(4uy)
+        writeTypedInt writer idx
+        writeTypedInt writer owner
+        writeTypedFloat writer radius
+        writeTypedVector3 writer pos
+        writeTypedVector3 writer speed
+    | SupplySpawned(idx, pos, radius, supType) ->
+        writer.Write(5uy)
+        writeTypedInt writer idx
+        writeTypedVector3 writer pos
+        writeTypedFloat writer radius
+        writeSupplyType writer supType
+    | SupplyDisappeared(idx) ->
+        writer.Write(6uy)
+        writeTypedInt writer idx
+    | PlayerJoined(idx, name, pos) ->
+        writer.Write(7uy)
+        writeTypedInt writer idx
+        writer.Write(name)
+        writePosition writer pos
+    | PlayerLeft(idx) ->
+        writer.Write(8uy)
+        writeTypedInt writer idx
+
+
+let readRemoteEvent (reader : PacketReader) =
+    match reader.ReadByte() with
+    | 0uy ->
+        let idx = readTypedInt reader 
+        let damage = readTypedFloat reader
+        let impulse = readTypedVector3 reader
+        DamageAndImpulse(idx, damage, impulse)
+    | 1uy -> 
+        let idx = readTypedInt reader
+        BulletDestroyed(idx)
+    | 2uy ->        
+        let idx = readTypedInt reader
+        let pos = readPosition reader
+        let speed = readTypedVector3 reader
+        let thrust = readTypedVector3 reader
+        ShipState(idx, pos, speed, thrust)
+
+    | 3uy ->
+        let idx = readTypedInt reader
+        ShipDestroyed(idx)
+    | 4uy ->
+        let idx = readTypedInt reader
+        let owner =readTypedInt reader
+        let radius = readTypedFloat reader
+        let pos = readTypedVector3 reader
+        let speed = readTypedVector3 reader
+        BulletFired(idx, owner, radius, pos, speed)
+    | 5uy ->
+        let idx = readTypedInt reader
+        let pos = readTypedVector3 reader
+        let radius = readTypedFloat reader
+        let supType = readSupplyType reader
+        SupplySpawned(idx, pos, radius, supType)
+    | 6uy ->
+        let idx = readTypedInt reader
+        SupplyDisappeared(idx)
+    | 7uy ->        
+        let idx = readTypedInt reader
+        let name = reader.ReadString()
+        let pos = readPosition reader
+        PlayerJoined(idx, name, pos)
+    | 8uy ->
+        let idx = readTypedInt reader
+        PlayerLeft(idx)
+    | _ ->
+        failwith "Unexpected value for RemoteEvent"
+
+
+let writeRemoteEventList (writer : PacketWriter) events =
+    writer.Write(List.length events)
+    for e in events do
+        writeRemoteEvent writer e
+
+
+let readRemoteEventList (reader : PacketReader) =
+    let num = reader.ReadInt32()
+    [ for i in 1 .. num do
+        yield readRemoteEvent reader ]
 
 
 let receive (session : NetworkSession) (reader : PacketReader) =
@@ -286,10 +438,11 @@ type Participants(sys, session : NetworkSession, seed, random : System.Random, u
     let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
     let hostChangedSubscription = session.HostChanged.Subscribe updateSubscription
 
-    member this.Update(numPlayers) =
+    member this.Update(numPlayers) : unit =
         if isHost() then
             for newPlayer in newGamers.Value do
-                failwith "TODO" // Send all messages to new player.
+                writeRemoteEventList packetWriter allMessages.Value
+                send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
         let messages, mapping' =
             if isHost() then
@@ -330,13 +483,15 @@ type Participants(sys, session : NetworkSession, seed, random : System.Random, u
                 playerAddedMessages @ playerRemovedMessages, mapping
             else
                 [], mapping.Value
+        
+        writeRemoteEventList packetWriter allMessages.Value
+        broadcast SendDataOptions.ReliableInOrder session packetWriter
 
         newGamers := []
         removedGamers := []
         mapping := mapping'
         allMessages := messages @ allMessages.Value
 
-        failwith "TODO" // send new messages to everyone.
 
     member this.HasLocalPlayers =
         session.AllGamers
