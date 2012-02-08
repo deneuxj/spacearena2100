@@ -259,7 +259,7 @@ let setup (game : Game) =
                 if not scheduler.HasLiveTasks then
                     match initData.Value with
                     | Some (_, _, description, _) ->
-                        let initialState = emptyState description.myHostId
+                        let initialState = emptyState description.myHostId 0
                         game.Components.Remove(this) |> ignore
                         game.Components.Add(newComponent (game, description, initialState))
                     | None -> ()

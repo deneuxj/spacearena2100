@@ -132,9 +132,10 @@ let nextGuid last =
 let firstGuid hostNumber = 1<BulletGuid> * hostNumber
 
 type Supplies =
-    { pos : MarkedArray<GSI, Vector3>;
+    { pos : MarkedArray<GSI, TypedVector3<m>>;
       types : MarkedArray<GSI, SupplyType>;
-      radii : MarkedArray<GSI, float32<m>> }
+      radii : MarkedArray<GSI, float32<m>>;
+      timeLeft : MarkedArray<GSI, int<dms>> }
 
 type AiState =
     | Undecided
@@ -152,7 +153,7 @@ type State =
       time : int<dms>;
     }
 
-let emptyState hostId =
+let emptyState hostId numSupplies =
     let ships =
         { headings = MarkedArray [||]
           rights = MarkedArray [||]
@@ -184,9 +185,10 @@ let emptyState hostId =
         }
 
     let supplies =
-        { pos = MarkedArray [||]
-          types = MarkedArray [||]
-          radii = MarkedArray [||] }
+        { pos = Array.zeroCreate numSupplies |> MarkedArray
+          types = Array.zeroCreate numSupplies |> MarkedArray
+          radii = Array.zeroCreate numSupplies |> MarkedArray
+          timeLeft = Array.create numSupplies 0<dms> |> MarkedArray }
 
     { ships = ships
       bullets = bullets

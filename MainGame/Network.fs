@@ -127,12 +127,13 @@ let writeRemoteEvent (writer : PacketWriter) ev =
         writeTypedFloat writer radius
         writeTypedVector3 writer pos
         writeTypedVector3 writer speed
-    | SupplySpawned(idx, pos, radius, supType) ->
+    | SupplySpawned(idx, timeLeft, pos, radius, supType) ->
         writer.Write(5uy)
         writeTypedInt writer idx
         writeTypedVector3 writer pos
         writeTypedFloat writer radius
         writeSupplyType writer supType
+        writeTypedInt writer timeLeft
     | SupplyDisappeared(idx) ->
         writer.Write(6uy)
         writeTypedInt writer idx
@@ -178,7 +179,8 @@ let readRemoteEvent (reader : PacketReader) =
         let pos = readTypedVector3 reader
         let radius = readTypedFloat reader
         let supType = readSupplyType reader
-        SupplySpawned(idx, pos, radius, supType)
+        let timeLeft = readTypedInt reader
+        SupplySpawned(idx, timeLeft, pos, radius, supType)
     | 6uy ->
         let idx = readTypedInt reader
         SupplyDisappeared(idx)
