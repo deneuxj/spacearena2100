@@ -231,18 +231,18 @@ let stop() =
 /// - new ship states with updated special bullet counts,
 /// - tuples to construct RemoteEvents, and
 /// - the updated last bullet GUID.
-let fireBullets lastBulletId localPlayers (ships : GameState.Ships) (controls : Controls list) =
-    let rec work lastBulletId localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire =
+let fireBullets bulletCount localPlayers (ships : GameState.Ships) (controls : Controls list) =
+    let rec work bulletCount localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire =
         match localPlayers, controls, timeLeft, numBigBullets, numFastBullets, numHiRateBullets, numMultiFire with
         | player :: localPlayers, control :: controls, t :: timeLeft, bb :: numBigBullets, fb :: numFastBullets, hrb :: numHiRateBullets, mf :: numMultiFire ->
             let fireAuthorized =
                 control.fireRequested && t <= 0<dms>
 
-            let nextLastBulletId =
+            let bulletCount =
                 if fireAuthorized then
-                    nextGuid lastBulletId
+                    bulletCount + 1
                 else
-                    lastBulletId
+                    bulletCount
                 
             let ret =
                 if fireAuthorized then
@@ -252,7 +252,7 @@ let fireBullets lastBulletId localPlayers (ships : GameState.Ships) (controls : 
                     let isHiRate = hrb > 0
                     let isMultiFire = mf > 0
                     
-                    let guid = nextLastBulletId
+                    let guid = getGuid player bulletCount
                     let radius =
                         if isBig then BulletConstants.bigRadius else BulletConstants.radius
                     let speed =
@@ -287,12 +287,12 @@ let fireBullets lastBulletId localPlayers (ships : GameState.Ships) (controls : 
                         []
                     )
 
-            ret :: work nextLastBulletId localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire
+            ret :: work bulletCount localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire
         | [], [], [], [], [], [], [] -> []
         | _ -> failwith "List lengths don't match"
 
     let tmp = 
-        work lastBulletId localPlayers controls ships.timeBeforeFire ships.numBigBullets ships.numFastBullets ships.numHighRate ships.numMultiFire
+        work bulletCount localPlayers controls ships.timeBeforeFire ships.numBigBullets ships.numFastBullets ships.numHighRate ships.numMultiFire
 
     let timeLeft =
         tmp
@@ -319,14 +319,15 @@ let fireBullets lastBulletId localPlayers (ships : GameState.Ships) (controls : 
         |> List.map snd
         |> List.concat
 
-    let lastGuid =
+    let bulletCount =
         if List.isEmpty newBulletsData then
-            lastBulletId
+            bulletCount
         else
-            let lastGuid, _, _, _, _ =
+            let bulletCount =
                 newBulletsData
-                |> List.maxBy (fun (x, _, _, _, _) -> x)
-            lastGuid
+                |> List.map (fun (x, _, _, _, _) -> countOfBulletGuid x)
+                |> List.max
+            bulletCount
 
     { ships with
         timeBeforeFire = timeLeft
@@ -338,4 +339,4 @@ let fireBullets lastBulletId localPlayers (ships : GameState.Ships) (controls : 
     ,
     newBulletsData
     ,
-    lastGuid
+    bulletCount

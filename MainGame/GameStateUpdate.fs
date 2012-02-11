@@ -33,7 +33,7 @@ type TimedRemoteEvent =
       event : RemoteEvent }
 
 /// Create new bullets according to BulletFired events
-let createBullets guidIsLocal now lastLocalGuid events =
+let createBullets guidIsLocal now bulletCount events =
     let events =
         events
         |> Array.filter (function { event = BulletFired _ } -> true | _ -> false)
@@ -63,9 +63,9 @@ let createBullets guidIsLocal now lastLocalGuid events =
         events
         |> Array.map (function { time = t0 } -> lifeLength - (now - t0))
 
-    let lastLocalGuid =
+    let bulletCount =
         newGuids
-        |> Array.fold (fun lastGuid guid -> if guidIsLocal guid && guid > lastGuid then guid else lastGuid) lastLocalGuid
+        |> Array.fold (fun bulletCount guid -> if guidIsLocal guid then max (countOfBulletGuid guid) bulletCount else bulletCount) bulletCount
 
     { guids = newGuids;
       owners = newOwners;
@@ -73,7 +73,7 @@ let createBullets guidIsLocal now lastLocalGuid events =
       speeds = newSpeeds;
       timeLeft = newTimeLeft;
       pos = newPos;
-      lastLocalGuid = lastLocalGuid }
+      bulletCounter = bulletCount }
 
 /// Mutate speed and health arrays.
 let applyDamageAndImpulse speeds health (damagesAndImpulses : (int<GPI> * TypedVector3<m/s> * float32<Health>)[]) =
@@ -114,7 +114,7 @@ let destroyBullets bullets (guidsToRetire : Set<int<BulletGuid>>) =
       speeds = newSpeeds;
       timeLeft = newTimeLeft;
       pos = newPos;
-      lastLocalGuid = bullets.lastLocalGuid }
+      bulletCounter = bullets.bulletCounter }
 
 
 /// Merge two bullet groups
@@ -125,7 +125,7 @@ let appendBullets bullets1 bullets2 =
       speeds = Array.append bullets1.speeds bullets2.speeds;
       timeLeft = Array.append bullets1.timeLeft bullets2.timeLeft;
       pos = Array.append bullets1.pos bullets2.pos
-      lastLocalGuid = max bullets1.lastLocalGuid bullets2.lastLocalGuid }
+      bulletCounter = max bullets1.bulletCounter bullets2.bulletCounter }
 
 
 /// Check intersection between a moving sphere and asteroids
@@ -323,7 +323,7 @@ let retireBullets (bullets : Bullets) =
       radii = filter bullets.radii;
       owners = filter bullets.owners;
       timeLeft = filter bullets.timeLeft;
-      lastLocalGuid = bullets.lastLocalGuid }
+      bulletCounter = bullets.bulletCounter }
 
 /// Update the position and speed of all ships.
 let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (forces : TypedVector3<N> list) localHeadings localRights (localPlayers : int<GPI> list): Ships =
@@ -525,12 +525,12 @@ let updateSupplies (dt : int<dms>) (now : int<dms>) (events : TimedRemoteEvent[]
 
 /// Update the game state.
 let update dt (description : Description) events forces headings rights (state : State) =
-    let guidIsLocal = guidIsLocal (description.myHostId)
+    let guidIsLocal = guidIsLocal description.localPlayersIdxs
     
     updateDeadReckoning dt state.time state.ships description.shipTypes events
 
     let bullets =
-        createBullets guidIsLocal state.time state.bullets.lastLocalGuid events
+        createBullets guidIsLocal state.time state.bullets.bulletCounter events
         |> appendBullets state.bullets
     
     let bulletHitsOnShips = computeHits guidIsLocal dt state.ships description.shipTypes state.bullets

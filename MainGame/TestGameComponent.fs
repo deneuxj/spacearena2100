@@ -148,8 +148,8 @@ let newComponent (game : Game, description, initialState) =
         let controls = //humanControls
             work humanControls aiControls description.localPlayersIdxs description.localAiPlayerIdxs
 
-        let ships, newBullets, lastLocalGuid =
-            ShipControl.fireBullets state.bullets.lastLocalGuid description.localPlayersIdxs state.ships controls
+        let ships, newBullets, bulletCount =
+            ShipControl.fireBullets state.bullets.bulletCounter description.localPlayersIdxs state.ships controls
 
         let controls =
             ShipControl.handlePlayerInputs dt description.localPlayersIdxs ships description.shipTypes controls
@@ -160,7 +160,7 @@ let newComponent (game : Game, description, initialState) =
             { state with
                 ships = ships
                 ais = aiStates
-                bullets = { state.bullets with lastLocalGuid = lastLocalGuid } }
+                bullets = { state.bullets with bulletCounter = bulletCount } }
 
         let timedEvents =
             newBullets
@@ -259,7 +259,7 @@ let setup (game : Game) =
                 if not scheduler.HasLiveTasks then
                     match initData.Value with
                     | Some (_, _, description, _) ->
-                        let initialState = emptyState description.myHostId 0
+                        let initialState = emptyState 0
                         game.Components.Remove(this) |> ignore
                         game.Components.Add(newComponent (game, description, initialState))
                     | None -> ()

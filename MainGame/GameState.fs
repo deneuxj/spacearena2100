@@ -63,8 +63,7 @@ type Asteroids =
     
 /// Data that does not change often during a round.
 type Description =
-    { numPlayers : int;
-      myHostId : int;
+    { numPlayers : int;      
       playerNames : MarkedArray<GPI, string>;
       /// All local players, including humans and AIs
       localPlayersIdxs : int<GPI> list;
@@ -107,7 +106,7 @@ type Bullets =
       speeds : TypedVector3<m/s>[];
       radii : float32<m>[];
       owners : int<GPI>[];
-      lastLocalGuid : int<BulletGuid> }
+      bulletCounter : int }
 
 module BulletConstants =
     let speed = 300.0f<m/s>
@@ -120,16 +119,21 @@ module BulletConstants =
     let multiFireSpread = MathHelper.ToRadians(5.0f) * 1.0f<rad>
     let density = 1000.0f<kg/m^3>
 
+/// Return the owner of a bullet given its guid. 
+let playerOfBulletGuid (guid : int<BulletGuid>) =
+    ((int32 guid) &&& 0xFF) * 1<GPI>
+
+let countOfBulletGuid (guid : int<BulletGuid>) =
+    ((int32 guid) &&& 0x7FFFFF00) >>> 8
+
+/// Get a bullet Guid given the bullet's owner and a locally unique count number.
+let getGuid (player : int<GPI>) count =
+    1<BulletGuid> * (int32 player + count <<< 8)
+
 /// Check if a bullet guid was produced by a specific host.
-let guidIsLocal hostNumber (guid : int<BulletGuid>) =
-    (int guid &&& 0xFF) = hostNumber
-
-/// Get the next bullet guid number.
-let nextGuid last =
-    last + 256<BulletGuid>
-
-/// Get the first bullet guid of a given host.
-let firstGuid hostNumber = 1<BulletGuid> * hostNumber
+let guidIsLocal localPlayers guid =
+    localPlayers
+    |> List.exists (fun player -> player = playerOfBulletGuid guid)
 
 type Supplies =
     { pos : MarkedArray<GSI, TypedVector3<m>>;
@@ -153,7 +157,7 @@ type State =
       time : int<dms>;
     }
 
-let emptyState hostId numSupplies =
+let emptyState numSupplies =
     let ships =
         { headings = MarkedArray [||]
           rights = MarkedArray [||]
@@ -181,7 +185,7 @@ let emptyState hostId numSupplies =
           speeds = [||]
           radii = [||]
           owners = [||]
-          lastLocalGuid = firstGuid hostId
+          bulletCounter = 0
         }
 
     let supplies =
