@@ -22,15 +22,22 @@ namespace SpaceArena2100
         GraphicsDeviceManager graphics;
         SpriteBatch spriteBatch;
         SpriteFont font;
-        IFramePerSecondCounter fpsCounter;
+        IFramePerSecondCounter FpsCounter {
+          get {
+            return
+              this.Components
+              .Where(comp => comp is IFramePerSecondCounter)
+              .Cast<IFramePerSecondCounter>()
+              .FirstOrDefault();
+          }
+        }
+
 
         public Game1()
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
-            var component = TestGameComponent.newComponent(this);
-            Components.Add(component);
-            fpsCounter = component;
+            TestGameComponent.setup(this, new PlayerIndex[] {PlayerIndex.One});
         }
 
         /// <summary>
@@ -97,7 +104,9 @@ namespace SpaceArena2100
             // TODO: Add your drawing code here
             try {
               spriteBatch.Begin();
-              spriteBatch.DrawString(font, String.Format("{0:F1} fps", fpsCounter.FramesPerSecond), new Vector2(100.0f, 70.0f), Color.White);
+              var fpsCounter = FpsCounter;
+              if (fpsCounter != null)
+                spriteBatch.DrawString(font, String.Format("{0:F1} fps", fpsCounter.FramesPerSecond), new Vector2(100.0f, 70.0f), Color.White);
             }
             finally {
               spriteBatch.End();
