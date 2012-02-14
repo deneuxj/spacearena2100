@@ -17,6 +17,7 @@ open SpaceArena2100.Units
 
 open CleverRake.XnaUtils.EvilNull
 open CleverRake.XnaUtils.CoopMultiTasking
+open CleverRake.XnaUtils.XnaExtensions
 
 type RenderResources =
     { shipModel : Graphics.Model
@@ -34,7 +35,7 @@ type RenderResources =
     }
 
 
-let newComponent (game : Game, description, initialState) =
+let newComponent (game : Game, description, initialState, session, seed, random, unsubscribe) =
     
     let content = new Content.ContentManager(game.Services)
     let gdm =
@@ -237,17 +238,51 @@ let newComponent (game : Game, description, initialState) =
                 r.spriteBatch.End()
         | _ -> ()
 
+    let participants = new Network.Participants(session, seed, random, unsubscribe)
+    let participantsWrapper =
+        { new GameComponent(game) with
+            member this.Update(_) = participants.Update()            
+        }
+    game.Components.Add participantsWrapper
+
+    failwith "TODO: add all participants to the session"
+
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
+    comp.Disposed.Add <| fun _ ->
+        unsubscribe()
+        game.Components.Remove(participantsWrapper) |> ignore
+        participants.Dispose()
     comp
 
 
-let setup (game : Game) =
+let setup (game : Game, playerIndices) =
+    let playerIndices = List.ofSeq playerIndices
     let scheduler = new Scheduler()
     let sys = new Environment(scheduler)
     let initData = ref None
     scheduler.AddTask
         (task {
             let! data = Network.start sys NetworkSessionType.SystemLink
+            let numSignInSlots =
+                [1; 2; 4]
+                |> Seq.find(fun n -> n >= List.length playerIndices)
+            let rec signIn = task {
+                let somePlayersAreNotSignedIn =
+                    playerIndices
+                    |> List.exists (fun (pi : PlayerIndex) -> GamerServices.Gamer.SignedInGamers.ItemOpt(pi).IsNone)
+                if somePlayersAreNotSignedIn then
+                    do! StorageTasks.doOnGuide (fun () -> GamerServices.Guide.ShowSignIn(numSignInSlots, true))
+                    return! signIn
+                else
+                    return ()
+            }
+            do! signIn
+            for pi in playerIndices do
+                match GamerServices.Gamer.SignedInGamers.ItemOpt(pi) with
+                | Some gamer ->
+                    let session, _, _, _, _ = data
+                    session.AddLocalGamer(gamer)
+                | None -> failwithf "Player %d not signed in" (int pi)
             initData := Some data
         })
 
@@ -258,11 +293,11 @@ let setup (game : Game) =
                 scheduler.RunFor dt
                 if not scheduler.HasLiveTasks then
                     match initData.Value with
-                    | Some (_, _, description, _) ->
+                    | Some (session, seed, random, description, unsubscribe) ->
                         let initialState = emptyState 0
                         game.Components.Remove(this) |> ignore
-                        game.Components.Add(newComponent (game, description, initialState))
-                    | None -> ()
+                        game.Components.Add(newComponent (game, description, initialState, session, seed, random, unsubscribe))
+                    | None -> failwith "Failed to create or join session"
         }
 
     game.Components.Add(initiatingComponent)

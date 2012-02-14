@@ -408,16 +408,17 @@ let start sys sessionType =
                     let description = newDescription random
                     return seed.Value.Value, random, description, fun () -> ()
                 }
-        return seed, random, description, unsubscribe
+        return session, seed, random, description, unsubscribe
     }
 
-type Participants(sys, session : NetworkSession, seed, random : System.Random, unsubscribe) =
+type Participants(session : NetworkSession, seed, random : System.Random, unsubscribe) =
     let newGamers : NetworkGamer list ref = ref []
     let removedGamers : NetworkGamer list ref = ref []
     let packetWriter = new PacketWriter()
     let mapping = ref Map.empty
     let unsubscribe = ref unsubscribe
     let allMessages = ref []
+    let numPlayers = ref 0
 
     let updateSubscription (hostChanged : HostChangedEventArgs) =
         unsubscribe.Value()
@@ -439,17 +440,19 @@ type Participants(sys, session : NetworkSession, seed, random : System.Random, u
     let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
     let hostChangedSubscription = session.HostChanged.Subscribe updateSubscription
 
-    member this.Update(numPlayers) : unit =
-        if isHost() then
+    member this.Update() : unit =
+        let isHost = isHost()
+
+        if isHost then
             for newPlayer in newGamers.Value do
                 writeRemoteEventList packetWriter allMessages.Value
                 send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
         let messages, mapping' =
-            if isHost() then
+            if isHost then
                 let newGPIs =
                     newGamers.Value
-                    |> List.mapi (fun i _ -> 1<GPI> * (numPlayers + i))
+                    |> List.mapi (fun i _ -> 1<GPI> * (numPlayers.Value + i))
 
                 let mapping =
                     List.zip newGamers.Value newGPIs
@@ -485,9 +488,11 @@ type Participants(sys, session : NetworkSession, seed, random : System.Random, u
             else
                 [], mapping.Value
         
-        writeRemoteEventList packetWriter allMessages.Value
-        broadcast SendDataOptions.ReliableInOrder session packetWriter
+        if isHost then
+            writeRemoteEventList packetWriter allMessages.Value
+            broadcast SendDataOptions.ReliableInOrder session packetWriter
 
+        numPlayers := numPlayers.Value + newGamers.Value.Length
         newGamers := []
         removedGamers := []
         mapping := mapping'
