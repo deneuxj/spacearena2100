@@ -245,8 +245,6 @@ let newComponent (game : Game, description, initialState, session, seed, random,
         }
     game.Components.Add participantsWrapper
 
-    failwith "TODO: add all participants to the session"
-
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
     comp.Disposed.Add <| fun _ ->
         unsubscribe()
@@ -262,7 +260,6 @@ let setup (game : Game, playerIndices) =
     let initData = ref None
     scheduler.AddTask
         (task {
-            let! data = Network.start sys NetworkSessionType.SystemLink
             let numSignInSlots =
                 [1; 2; 4]
                 |> Seq.find(fun n -> n >= List.length playerIndices)
@@ -277,11 +274,16 @@ let setup (game : Game, playerIndices) =
                     return ()
             }
             do! signIn
+            let! data = Network.start sys NetworkSessionType.SystemLink
             for pi in playerIndices do
                 match GamerServices.Gamer.SignedInGamers.ItemOpt(pi) with
                 | Some gamer ->
                     let session, _, _, _, _ = data
-                    session.AddLocalGamer(gamer)
+                    let hasJoined =
+                        session.LocalGamers
+                        |> Seq.exists (fun localGamer -> localGamer.SignedInGamer = gamer)                        
+                    if not hasJoined then
+                        session.AddLocalGamer(gamer)
                 | None -> failwithf "Player %d not signed in" (int pi)
             initData := Some data
         })
