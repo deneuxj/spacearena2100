@@ -524,9 +524,25 @@ let updateSupplies (dt : int<dms>) (now : int<dms>) (events : TimedRemoteEvent[]
         
 
 /// Update the game state.
-let update dt (description : Description) events forces headings rights (state : State) =
+let update dt events forces headings rights (description : Description, state : State) =
     let guidIsLocal = guidIsLocal description.localPlayersIdxs
     
+    let description =
+        events
+        |> Seq.choose (fun ev ->
+            match ev with
+            | { event = PlayerJoined(idx, name, pos) } -> Some (idx, name, pos)
+            | _ -> None)
+        |> Seq.fold (fun description (idx, name, pos) -> addPlayerToDescription idx name description) description
+
+    let description =
+        events
+        |> Seq.choose (fun ev ->
+            match ev with
+            | { event = PlayerLeft(idx) } -> Some idx
+            | _ -> None)
+        |> Seq.fold (fun description idx -> removePlayerFromDescription idx description) description
+
     updateDeadReckoning dt state.time state.ships description.shipTypes events
 
     let bullets =
@@ -586,6 +602,9 @@ let update dt (description : Description) events forces headings rights (state :
 
     updateSupplies (dmsFromS dt) state.time events supplies
 
+    // Return updated description and state
+    description
+    ,
     { state with
         ships = ships
         bullets = bullets

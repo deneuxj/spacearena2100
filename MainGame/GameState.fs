@@ -213,7 +213,7 @@ let getBulletSpeed (localPlayers : int<GPI> list) (ships : Ships) (player : int<
         failwith "Cannot get bullet speed of remote player"
 
 
-let addPlayerToDescription newGPI playerName description isLocal =
+let addPlayerToDescription newGPI playerName description =
     let numPlayers = max (1 + int newGPI) description.numPlayers
     let playerNames =
         seq { description.numPlayers .. int newGPI }
@@ -223,7 +223,6 @@ let addPlayerToDescription newGPI playerName description isLocal =
     { description with
         numPlayers = numPlayers
         playerNames = playerNames
-        localPlayersIdxs = if isLocal then newGPI :: description.localPlayersIdxs else description.localPlayersIdxs
     }
 
 

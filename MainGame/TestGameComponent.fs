@@ -35,8 +35,10 @@ type RenderResources =
     }
 
 
-let newComponent (game : Game, description, initialState, session, seed, random, unsubscribe) =
+let newComponent (game : Game, initialState, session, seed, random, unsubscribe) =
     
+    let description, state = initialState
+
     let content = new Content.ContentManager(game.Services)
     let gdm =
         match game.Services.GetService(typeof<IGraphicsDeviceManager>) with
@@ -98,12 +100,24 @@ let newComponent (game : Game, description, initialState, session, seed, random,
         description.localPlayersIdxs
         |> List.map (fun _ -> ShipControl.defaultSettings)
 
-    let update (gt : GameTime) (state : State, computationTime) =
+    let update (gt : GameTime) (description : Description, state : State, computationTime) =
         let me = 0<GPI>
         let ai = 1<GPI>
 
+        let playerIndices =
+            let rec work playerIndices localPlayers =
+                match playerIndices, localPlayers with
+                | _, [] -> []
+                | [], player :: players -> None :: work [] players
+                | idx :: idxs, player :: players ->
+                    if description.localAiPlayerIdxs |> List.exists ((=) player) then
+                        None :: work playerIndices players
+                    else
+                        Some idx :: work idxs players
+            work [PlayerIndex.One; PlayerIndex.Two; PlayerIndex.Three; PlayerIndex.Four] description.localPlayersIdxs
+
         let humanControls =
-            ShipControl.getAllControls settings [ Some PlayerIndex.One ; None ]
+            ShipControl.getAllControls settings playerIndices
 
         let subject = me
         (state.ships.posHost.[subject],
@@ -120,11 +134,11 @@ let newComponent (game : Game, description, initialState, session, seed, random,
          description.shipTypes.Content
         )
         ,
-        (state, humanControls)
+        (description, state, humanControls)
 
     let watch = new System.Diagnostics.Stopwatch()
 
-    let compute (gt : GameTime) (state : GameState.State, humanControls) =
+    let compute (gt : GameTime) (description : Description, state : GameState.State, humanControls) =
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
         watch.Reset()
@@ -172,9 +186,9 @@ let newComponent (game : Game, description, initialState, session, seed, random,
             { state with
                 ships = { state.ships with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
-        let state' = GameStateUpdate.update dt description timedEvents forces headings rights state
+        let description', state' = GameStateUpdate.update dt timedEvents forces headings rights (description, state)
 
-        state', watch.Elapsed
+        description', state', watch.Elapsed
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
@@ -245,7 +259,7 @@ let newComponent (game : Game, description, initialState, session, seed, random,
         }
     game.Components.Add participantsWrapper
 
-    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
+    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (description, state, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
     comp.Disposed.Add <| fun _ ->
         unsubscribe()
         game.Components.Remove(participantsWrapper) |> ignore
@@ -296,9 +310,9 @@ let setup (game : Game, playerIndices) =
                 if not scheduler.HasLiveTasks then
                     match initData.Value with
                     | Some (session, seed, random, description, unsubscribe) ->
-                        let initialState = emptyState 0
+                        let initialState = description, emptyState 0
                         game.Components.Remove(this) |> ignore
-                        game.Components.Add(newComponent (game, description, initialState, session, seed, random, unsubscribe))
+                        game.Components.Add(newComponent (game, initialState, session, seed, random, unsubscribe))
                     | None -> failwith "Failed to create or join session"
         }
 
