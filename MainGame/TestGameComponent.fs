@@ -35,10 +35,8 @@ type RenderResources =
     }
 
 
-let newComponent (game : Game, initialState, session, seed, random, unsubscribe) =
+let newComponent (game : Game, description : Description, initialState, session, seed, random, unsubscribe) =
     
-    let description, state = initialState
-
     let content = new Content.ContentManager(game.Services)
     let gdm =
         match game.Services.GetService(typeof<IGraphicsDeviceManager>) with
@@ -96,11 +94,7 @@ let newComponent (game : Game, initialState, session, seed, random, unsubscribe)
         | None -> ()
         dispose gdm
 
-    let settings =
-        description.localPlayersIdxs
-        |> List.map (fun _ -> ShipControl.defaultSettings)
-
-    let update (gt : GameTime) (description : Description, state : State, computationTime) =
+    let update (gt : GameTime) (state : State, computationTime) =
         let me = 0<GPI>
         let ai = 1<GPI>
 
@@ -110,14 +104,20 @@ let newComponent (game : Game, initialState, session, seed, random, unsubscribe)
                 | _, [] -> []
                 | [], player :: players -> None :: work [] players
                 | idx :: idxs, player :: players ->
-                    if description.localAiPlayerIdxs |> List.exists ((=) player) then
+                    if state.players.localAiPlayerIdxs |> List.exists ((=) player) then
                         None :: work playerIndices players
                     else
                         Some idx :: work idxs players
-            work [PlayerIndex.One; PlayerIndex.Two; PlayerIndex.Three; PlayerIndex.Four] description.localPlayersIdxs
+            work [PlayerIndex.One; PlayerIndex.Two; PlayerIndex.Three; PlayerIndex.Four] state.players.localPlayersIdxs
+
+        let settings =
+            playerIndices
+            |> List.map (fun _ -> ShipControl.defaultSettings)
 
         let humanControls =
             ShipControl.getAllControls settings playerIndices
+
+        failwith "TODO: read net messages"
 
         let subject = me
         (state.ships.posHost.[subject],
@@ -131,22 +131,22 @@ let newComponent (game : Game, initialState, session, seed, random, unsubscribe)
          state.ships.speeds.Content,
          state.ships.headings.Content,
          state.ships.rights.Content,
-         description.shipTypes.Content
+         state.players.shipTypes.Content
         )
         ,
-        (description, state, humanControls)
+        (state, humanControls)
 
     let watch = new System.Diagnostics.Stopwatch()
 
-    let compute (gt : GameTime) (description : Description, state : GameState.State, humanControls) =
+    let compute (gt : GameTime) (state : GameState.State, humanControls) =
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
         watch.Reset()
         watch.Start()
 
         let aiStates, aiControls =
-            List.zip description.localAiPlayerIdxs state.ais
-            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed description.localAiPlayerIdxs state.ships) dt state description ai idxAi)
+            List.zip state.players.localAiPlayerIdxs state.ais
+            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed state.players.localAiPlayerIdxs state.ships) dt state ai idxAi)
             |> List.unzip
 
         let rec work humanControls aiControls humanPlayers aiPlayers =
@@ -161,13 +161,13 @@ let newComponent (game : Game, initialState, session, seed, random, unsubscribe)
             | _ -> failwith "Missing data"
 
         let controls = //humanControls
-            work humanControls aiControls description.localPlayersIdxs description.localAiPlayerIdxs
+            work humanControls aiControls state.players.localPlayersIdxs state.players.localAiPlayerIdxs
 
         let ships, newBullets, bulletCount =
-            ShipControl.fireBullets state.bullets.bulletCounter description.localPlayersIdxs state.ships controls
+            ShipControl.fireBullets state.bullets.bulletCounter state.players.localPlayersIdxs state.ships controls
 
         let controls =
-            ShipControl.handlePlayerInputs dt description.localPlayersIdxs ships description.shipTypes controls
+            ShipControl.handlePlayerInputs dt state.players.localPlayersIdxs ships state.players.shipTypes controls
 
         let headings, rights, targetSpeeds, forces = controls
 
@@ -186,9 +186,11 @@ let newComponent (game : Game, initialState, session, seed, random, unsubscribe)
             { state with
                 ships = { state.ships with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
-        let description', state' = GameStateUpdate.update dt timedEvents forces headings rights (description, state)
+        let state' = GameStateUpdate.update dt timedEvents forces headings rights description state
 
-        description', state', watch.Elapsed
+        failwith "TODO: mark new players which are local (the signed-in gamer with the corresponding LivePlayer id is local)"
+
+        state', watch.Elapsed
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
@@ -259,7 +261,7 @@ let newComponent (game : Game, initialState, session, seed, random, unsubscribe)
         }
     game.Components.Add participantsWrapper
 
-    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (description, state, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
+    let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
     comp.Disposed.Add <| fun _ ->
         unsubscribe()
         game.Components.Remove(participantsWrapper) |> ignore
@@ -310,9 +312,9 @@ let setup (game : Game, playerIndices) =
                 if not scheduler.HasLiveTasks then
                     match initData.Value with
                     | Some (session, seed, random, description, unsubscribe) ->
-                        let initialState = description, emptyState 0
+                        let initialState = emptyState 0
                         game.Components.Remove(this) |> ignore
-                        game.Components.Add(newComponent (game, initialState, session, seed, random, unsubscribe))
+                        game.Components.Add(newComponent (game, description, initialState, session, seed, random, unsubscribe))
                     | None -> failwith "Failed to create or join session"
         }
 

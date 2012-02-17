@@ -61,8 +61,12 @@ type Asteroids =
       octree : Octree.Node<int<AstIdx> array>;
       fieldSizes : TypedVector3<m> }
     
-/// Data that does not change often during a round.
+/// Data that does not change during a round.
 type Description =
+    { asteroids : Asteroids;
+    }
+
+type Players =
     { numPlayers : int;      
       playerNames : MarkedArray<GPI, string>;
       /// All local players, including humans and AIs
@@ -71,9 +75,8 @@ type Description =
       shipTypes : MarkedArray<GPI, ShipType>;
       /// Players who left the game early.
       gonePlayerIdxs : int<GPI> list;
-      asteroids : Asteroids;
     }
-
+    
 type Ships =
     { headings : MarkedArray<GPI, TypedVector3<1>>;
       rights : MarkedArray<GPI, TypedVector3<1>>;
@@ -150,7 +153,8 @@ type AiState =
 
 /// Data that changes every frame.
 type State =
-    { ships : Ships;
+    { players : Players;
+      ships : Ships;
       ais : AiState list;
       bullets : Bullets;
       supplies : Supplies;      
@@ -158,6 +162,15 @@ type State =
     }
 
 let emptyState numSupplies =
+    let players =
+        { numPlayers = 0
+          playerNames = MarkedArray [||]
+          localPlayersIdxs = []
+          localAiPlayerIdxs = []
+          shipTypes = MarkedArray [||]
+          gonePlayerIdxs = []
+        }
+
     let ships =
         { headings = MarkedArray [||]
           rights = MarkedArray [||]
@@ -194,7 +207,8 @@ let emptyState numSupplies =
           radii = Array.zeroCreate numSupplies |> MarkedArray
           timeLeft = Array.create numSupplies 0<dms> |> MarkedArray }
 
-    { ships = ships
+    { players = players
+      ships = ships
       bullets = bullets
       ais = []
       supplies = supplies
@@ -213,20 +227,20 @@ let getBulletSpeed (localPlayers : int<GPI> list) (ships : Ships) (player : int<
         failwith "Cannot get bullet speed of remote player"
 
 
-let addPlayerToDescription newGPI playerName description =
-    let numPlayers = max (1 + int newGPI) description.numPlayers
+let addPlayer newGPI playerName players =
+    let numPlayers = max (1 + int newGPI) players.numPlayers
     let playerNames =
-        seq { description.numPlayers .. int newGPI }
-        |> Seq.fold (fun playerNames _ -> MarkedArray.add "Unnamed" playerNames) description.playerNames
+        seq { players.numPlayers .. int newGPI - 1 }
+        |> Seq.fold (fun playerNames _ -> MarkedArray.add "Unnamed" playerNames) players.playerNames
     playerNames.[newGPI] <- playerName
 
-    { description with
+    { players with
         numPlayers = numPlayers
         playerNames = playerNames
     }
 
 
-let removePlayerFromDescription (idx : int<GPI>) description =
-    { description with
-        gonePlayerIdxs = idx :: description.gonePlayerIdxs
-        localPlayersIdxs = description.localPlayersIdxs |> List.filter ((<>) idx) }
+let removePlayer (idx : int<GPI>) players =
+    { players with
+        gonePlayerIdxs = idx :: players.gonePlayerIdxs
+        localPlayersIdxs = players.localPlayersIdxs |> List.filter ((<>) idx) }

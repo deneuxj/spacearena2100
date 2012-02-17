@@ -290,13 +290,13 @@ let steerFromAccel (maxBackwardAccel  : float32<m/s^2>) (maxForwardAccel : float
     ret
 
 
-let updateAi getBulletSpeed (dt : float32<s>) gameState description (state : AiState) idxAi =
+let updateAi getBulletSpeed (dt : float32<s>) gameState (state : AiState) idxAi =
     let ships = gameState.ships
-    let shipTypes = description.shipTypes
+    let shipTypes = gameState.players.shipTypes
 
     match state with
     | Undecided ->
-        if evalSituation 0.0f<s> gameState.ships description.shipTypes idxAi gameState.ships.posHost.[idxAi] gameState.ships.speeds.[idxAi] > 0.0 then
+        if evalSituation 0.0f<s> gameState.ships gameState.players.shipTypes idxAi gameState.ships.posHost.[idxAi] gameState.ships.speeds.[idxAi] > 0.0 then
             match selectTarget ships idxAi with
             | Some (idxTarget, (posFun, speedFun, accelFun)) ->
                 printfn "Tracking"

@@ -137,9 +137,10 @@ let writeRemoteEvent (writer : PacketWriter) ev =
     | SupplyDisappeared(idx) ->
         writer.Write(6uy)
         writeTypedInt writer idx
-    | PlayerJoined(idx, name, pos) ->
+    | PlayerJoined(idx, liveId, name, pos) ->
         writer.Write(7uy)
         writeTypedInt writer idx
+        writeTypedInt writer liveId
         writer.Write(name)
         writePosition writer pos
     | PlayerLeft(idx) ->
@@ -186,9 +187,10 @@ let readRemoteEvent (reader : PacketReader) =
         SupplyDisappeared(idx)
     | 7uy ->        
         let idx = readTypedInt reader
+        let liveId = readTypedInt reader
         let name = reader.ReadString()
         let pos = readPosition reader
-        PlayerJoined(idx, name, pos)
+        PlayerJoined(idx, liveId, name, pos)
     | 8uy ->
         let idx = readTypedInt reader
         PlayerLeft(idx)
@@ -303,20 +305,9 @@ let newDescription (random : System.Random) =
           fieldSizes = fieldSize * TypedVector3<1>(Vector3.One);
         }
         
-    { numPlayers = 0;
-      playerNames = MarkedArray [||];
-      localPlayersIdxs = [];
-      localAiPlayerIdxs = [];
-      shipTypes = MarkedArray [||];
-      gonePlayerIdxs = [];
-      asteroids = asteroids;
+    { asteroids = asteroids;
     }
 
-
-let removePlayer (gamer : NetworkGamer) map description =
-    match Map.tryFind ((int gamer.Id) * 1<LivePlayer>) map with
-    | Some idx -> removePlayerFromDescription idx description
-    | None -> failwith "No player with that Live id"
             
 type SessionMode = Server | Client
 
@@ -474,8 +465,12 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
                     |> Seq.map (fun g -> g.Gamertag)
                     |> List.ofSeq
 
+                let liveIds =
+                    newGamers.Value
+                    |> List.map (fun gamer -> 1<LivePlayer> * int gamer.Id)
+
                 let playerAddedMessages =
-                    List.zip3 newGPIs newNames newShipPositions
+                    SeqUtil.listZip4 newGPIs liveIds newNames newShipPositions
                     |> List.map PlayerJoined
 
                 let playerRemovedMessages =

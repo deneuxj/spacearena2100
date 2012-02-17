@@ -24,7 +24,7 @@ type RemoteEvent =
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
     | SupplySpawned of int<GSI> * int<dms> * TypedVector3<m> * float32<m> * SupplyType // Supply idx, position, radius, type
     | SupplyDisappeared of int<GSI> // Supply idx
-    | PlayerJoined of int<GPI> * string * ShipPosition // Ship idx, player name
+    | PlayerJoined of int<GPI> * int<LivePlayer> * string * ShipPosition // Ship idx, player name
     | PlayerLeft of int<GPI> // Ship idx
 
 /// A synchronization event with the time at which it was sent.
@@ -524,37 +524,65 @@ let updateSupplies (dt : int<dms>) (now : int<dms>) (events : TimedRemoteEvent[]
         
 
 /// Update the game state.
-let update dt events forces headings rights (description : Description, state : State) =
-    let guidIsLocal = guidIsLocal description.localPlayersIdxs
+let update dt events forces headings rights (description : Description) (state : State) =
+    let guidIsLocal = guidIsLocal state.players.localPlayersIdxs
     
-    let description =
+    // Add new players.
+    let players =
         events
         |> Seq.choose (fun ev ->
             match ev with
-            | { event = PlayerJoined(idx, name, pos) } -> Some (idx, name, pos)
+            | { event = PlayerJoined(idx, liveId, name, pos) } -> Some (idx, name, pos)
             | _ -> None)
-        |> Seq.fold (fun description (idx, name, pos) -> addPlayerToDescription idx name description) description
+        |> Seq.fold (fun description (idx, name, pos) -> addPlayer idx name description) state.players
 
-    let description =
+    // Mark those that have been removed.
+    let players =
         events
         |> Seq.choose (fun ev ->
             match ev with
             | { event = PlayerLeft(idx) } -> Some idx
             | _ -> None)
-        |> Seq.fold (fun description idx -> removePlayerFromDescription idx description) description
+        |> Seq.fold (fun description idx -> removePlayer idx description) players
 
-    updateDeadReckoning dt state.time state.ships description.shipTypes events
+    // A dummy set of values for ship position and orientation. The correct values are set after the arrays are grown.
+    let dummyNewPos : ShipPosition =
+        { position = TypedVector3<m>(Vector3.Zero)
+          heading = TypedVector3<1>(-Vector3.UnitZ)
+          right = TypedVector3<1>(Vector3.UnitX)
+        }
+
+    // Grow the arrays of ship data, if needed.
+    let ships =
+        if state.players.numPlayers = players.numPlayers then
+            state.ships
+        else
+            seq { state.players.numPlayers .. players.numPlayers - 1 }
+            |> Seq.fold (fun ships _ -> addNewShip dummyNewPos ships) state.ships
+
+    // Set the position and orientation of each new ship
+    for e in events do
+        match e with
+        | { event = PlayerJoined(idx, liveId, name, pos) } ->
+            ships.posClient.[idx] <- pos.position
+            ships.posHost.[idx] <- pos.position
+            ships.posVisible.[idx] <- pos.position
+            ships.headings.[idx] <- pos.heading
+            ships.rights.[idx] <- pos.right
+        | _ -> ()
+
+    updateDeadReckoning dt state.time ships players.shipTypes events
 
     let bullets =
         createBullets guidIsLocal state.time state.bullets.bulletCounter events
         |> appendBullets state.bullets
     
-    let bulletHitsOnShips = computeHits guidIsLocal dt state.ships description.shipTypes state.bullets
+    let bulletHitsOnShips = computeHits guidIsLocal dt ships players.shipTypes state.bullets
     let bulletHitsOnAsteroids = computeBulletAsteroidHits guidIsLocal dt description.asteroids state.bullets
-    let crashes = computeCrashes dt description.asteroids state.ships description.shipTypes description.localPlayersIdxs
+    let crashes = computeCrashes dt description.asteroids ships players.shipTypes players.localPlayersIdxs
     
-    let damagesDueToHits = computeHitResponse state.ships description.shipTypes bulletHitsOnShips
-    let damagesDueToCrashes = computeCrashResponse description.asteroids state.ships description.shipTypes crashes
+    let damagesDueToHits = computeHitResponse ships players.shipTypes bulletHitsOnShips
+    let damagesDueToCrashes = computeCrashResponse description.asteroids ships players.shipTypes crashes
 
     let guidsRemotelyDestroyed =
         events
@@ -585,11 +613,11 @@ let update dt events forces headings rights (description : Description, state : 
             | { event = DamageAndImpulse (idx, damage, impulse) } -> Some (idx, impulse, damage)
             | _ -> None)
 
-    applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToCrashes
-    applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToHits
-    applyDamageAndImpulse state.ships.speeds state.ships.health remoteDamages
+    applyDamageAndImpulse ships.speeds ships.health damagesDueToCrashes
+    applyDamageAndImpulse ships.speeds ships.health damagesDueToHits
+    applyDamageAndImpulse ships.speeds ships.health remoteDamages
 
-    let ships = integrateShips dt state.ships description.shipTypes forces headings rights description.localPlayersIdxs
+    let ships = integrateShips dt ships players.shipTypes forces headings rights players.localPlayersIdxs
     destroyShips events ships
 
     // copy the supplies arrays before mutating
@@ -603,9 +631,8 @@ let update dt events forces headings rights (description : Description, state : 
     updateSupplies (dmsFromS dt) state.time events supplies
 
     // Return updated description and state
-    description
-    ,
     { state with
+        players = players
         ships = ships
         bullets = bullets
         time = state.time + dmsFromS dt
