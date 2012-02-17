@@ -38,6 +38,7 @@ namespace SpaceArena2100
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
             TestGameComponent.setup(this, new PlayerIndex[] {PlayerIndex.One});
+            Components.Add(new GamerServicesComponent(this));
         }
 
         /// <summary>
