@@ -630,7 +630,7 @@ let update dt events forces headings rights (description : Description) (state :
 
     updateSupplies (dmsFromS dt) state.time events supplies
 
-    // Return updated description and state
+    // Return updated state and messages to send out
     { state with
         players = players
         ships = ships
@@ -638,3 +638,6 @@ let update dt events forces headings rights (description : Description) (state :
         time = state.time + dmsFromS dt
         supplies = supplies
     }
+    ,
+    failwith "TODO: messages to send"
+

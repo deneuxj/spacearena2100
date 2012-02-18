@@ -201,13 +201,18 @@ let readRemoteEvent (reader : PacketReader) =
 let writeRemoteEventList (writer : PacketWriter) events =
     writer.Write(List.length events)
     for e in events do
-        writeRemoteEvent writer e
+        match e with
+        | { time = t ; event = e } ->
+            writeTypedInt writer t
+            writeRemoteEvent writer e
 
 
 let readRemoteEventList (reader : PacketReader) =
     let num = reader.ReadInt32()
     [ for i in 1 .. num do
-        yield readRemoteEvent reader ]
+        let time = readTypedInt reader
+        let event = readRemoteEvent reader
+        yield { time = time; event = event } ]
 
 
 let receive (session : NetworkSession) (reader : PacketReader) =
@@ -219,7 +224,8 @@ let receive (session : NetworkSession) (reader : PacketReader) =
         else
             let dummyReader = new PacketReader()
             for i in 1 .. session.LocalGamers.Count - 1 do
-                session.LocalGamers.[i].ReceiveData(dummyReader) |> ignore
+                while session.LocalGamers.[i].IsDataAvailable do
+                    session.LocalGamers.[i].ReceiveData(dummyReader) |> ignore
             None
     else
         None
@@ -431,7 +437,7 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
     let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
     let hostChangedSubscription = session.HostChanged.Subscribe updateSubscription
 
-    member this.Update() : unit =
+    member this.Update(time) : unit =
         let isHost = isHost()
 
         if isHost then
@@ -471,12 +477,12 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
 
                 let playerAddedMessages =
                     SeqUtil.listZip4 newGPIs liveIds newNames newShipPositions
-                    |> List.map PlayerJoined
+                    |> List.map (fun data -> { time = time; event = PlayerJoined data })
 
                 let playerRemovedMessages =
                     removedGamers.Value
                     |> Seq.choose (fun g -> mapping.TryFind (1<LivePlayer> * int g.Id))
-                    |> Seq.map PlayerLeft
+                    |> Seq.map (fun data -> { time = time; event = PlayerLeft data })
                     |> List.ofSeq
 
                 playerAddedMessages @ playerRemovedMessages, mapping

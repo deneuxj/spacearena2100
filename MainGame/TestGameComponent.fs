@@ -36,7 +36,9 @@ type RenderResources =
 
 
 let newComponent (game : Game, description : Description, initialState, session, seed, random, unsubscribe) =
-    
+
+    let participants = new Network.Participants(session, seed, random, unsubscribe)
+        
     let content = new Content.ContentManager(game.Services)
     let gdm =
         match game.Services.GetService(typeof<IGraphicsDeviceManager>) with
@@ -95,9 +97,6 @@ let newComponent (game : Game, description : Description, initialState, session,
         dispose gdm
 
     let update (gt : GameTime) (state : State, computationTime) =
-        let me = 0<GPI>
-        let ai = 1<GPI>
-
         let playerIndices =
             let rec work playerIndices localPlayers =
                 match playerIndices, localPlayers with
@@ -117,9 +116,17 @@ let newComponent (game : Game, description : Description, initialState, session,
         let humanControls =
             ShipControl.getAllControls settings playerIndices
 
-        failwith "TODO: read net messages"
+        let reader = new PacketReader()
+        let messages =
+            Seq.initInfinite (fun _ ->
+                match Network.receive session reader with
+                | Some _ -> Network.readRemoteEventList reader |> Some
+                | None -> None)
+            |> Seq.takeWhile Option.isSome
+            |> Seq.choose id
+            |> List.concat
 
-        let subject = me
+        let subject = 0<GPI>
         (state.ships.posHost.[subject],
          state.ships.headings.[subject],
          state.ships.rights.[subject],
@@ -134,11 +141,11 @@ let newComponent (game : Game, description : Description, initialState, session,
          state.players.shipTypes.Content
         )
         ,
-        (state, humanControls)
+        (state, humanControls, messages)
 
     let watch = new System.Diagnostics.Stopwatch()
 
-    let compute (gt : GameTime) (state : GameState.State, humanControls) =
+    let compute (gt : GameTime) (state : GameState.State, humanControls, messages) =
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
 
         watch.Reset()
@@ -186,11 +193,34 @@ let newComponent (game : Game, description : Description, initialState, session,
             { state with
                 ships = { state.ships with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
-        let state' = GameStateUpdate.update dt timedEvents forces headings rights description state
+        let state, messagesOut = GameStateUpdate.update dt timedEvents forces headings rights description state
 
-        failwith "TODO: mark new players which are local (the signed-in gamer with the corresponding LivePlayer id is local)"
+        // Send messages
+        let writer = new PacketWriter()
+        Network.writeRemoteEventList writer messagesOut
+        Network.broadcast SendDataOptions.ReliableInOrder session writer
 
-        state', watch.Elapsed
+        // Add local players among those that just joined
+        let newPlayers =
+            messages
+            |> List.choose (function
+                | { event = PlayerJoined(idx, live, _, _) } ->
+                    Some (idx, live)
+                | _ -> None)
+        let localPlayers =
+            newPlayers
+            |> List.fold (fun localPlayers (idx, live) ->
+                if session.AllGamers
+                   |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
+                   idx :: localPlayers
+                else
+                    localPlayers) state.players.localPlayersIdxs
+
+        let state = { state with players = { state.players with localPlayersIdxs = localPlayers } }
+
+        participants.Update(state.time)
+
+        state, watch.Elapsed
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
@@ -254,17 +284,10 @@ let newComponent (game : Game, description : Description, initialState, session,
                 r.spriteBatch.End()
         | _ -> ()
 
-    let participants = new Network.Participants(session, seed, random, unsubscribe)
-    let participantsWrapper =
-        { new GameComponent(game) with
-            member this.Update(_) = participants.Update()            
-        }
-    game.Components.Add participantsWrapper
 
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
     comp.Disposed.Add <| fun _ ->
         unsubscribe()
-        game.Components.Remove(participantsWrapper) |> ignore
         participants.Dispose()
     comp
 
