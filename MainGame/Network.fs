@@ -148,6 +148,11 @@ let writeRemoteEvent (writer : PacketWriter) ev =
         writeTypedInt writer idx
 
 
+let writeTimedRemoteEvent (writer : PacketWriter) ev =
+    writeTypedInt writer ev.time
+    writeRemoteEvent writer ev.event
+
+
 let readRemoteEvent (reader : PacketReader) =
     match reader.ReadByte() with
     | 0uy ->
@@ -196,6 +201,12 @@ let readRemoteEvent (reader : PacketReader) =
         PlayerLeft(idx)
     | _ ->
         failwith "Unexpected value for RemoteEvent"
+
+
+let readTimedRemoteEvent (reader : PacketReader) =
+    let time = readTypedInt reader
+    let ev = readRemoteEvent reader
+    { time = time ; event = ev }
 
 
 let writeRemoteEventList (writer : PacketWriter) events =

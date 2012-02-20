@@ -116,15 +116,22 @@ let newComponent (game : Game, description : Description, initialState, session,
         let humanControls =
             ShipControl.getAllControls settings playerIndices
 
-        let reader = new PacketReader()
         let messages =
-            Seq.initInfinite (fun _ ->
-                match Network.receive session reader with
-                | Some _ -> Network.readRemoteEventList reader |> Some
-                | None -> None)
-            |> Seq.takeWhile Option.isSome
-            |> Seq.choose id
-            |> List.concat
+            let reader = new PacketReader()
+            [
+                let keepGoing = ref true
+                while keepGoing.Value do
+                    match Network.receive session reader with
+                    | Some(_, sender) ->
+                        match Network.readTimedRemoteEvent reader with
+                        | { event = BulletFired _ }
+                        | { event = BulletDestroyed _ }
+                        | { event = ShipState _ } as v -> // Ignore bullet and ship updates that come from us.
+                            if not sender.IsLocal then
+                                yield v
+                        | v -> yield v
+                    | None -> keepGoing := false
+            ]
 
         let subject = 0<GPI>
         (state.ships.posHost.[subject],
@@ -197,8 +204,18 @@ let newComponent (game : Game, description : Description, initialState, session,
 
         // Send messages
         let writer = new PacketWriter()
-        Network.writeRemoteEventList writer messagesOut
-        Network.broadcast SendDataOptions.ReliableInOrder session writer
+        for msg in messagesOut do
+            Network.writeTimedRemoteEvent writer msg
+            let sendOptions =
+                match msg.event with
+                | PlayerJoined _ | PlayerLeft _
+                | BulletFired _ | BulletDestroyed _
+                | DamageAndImpulse _
+                | ShipDestroyed _
+                | SupplyDisappeared _ | SupplySpawned _ -> SendDataOptions.Reliable
+                | ShipState _ -> SendDataOptions.None
+        
+            Network.broadcast sendOptions session writer
 
         // Add local players among those that just joined
         let newPlayers =
@@ -212,7 +229,7 @@ let newComponent (game : Game, description : Description, initialState, session,
             |> List.fold (fun localPlayers (idx, live) ->
                 if session.AllGamers
                    |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
-                   idx :: localPlayers
+                    idx :: localPlayers
                 else
                     localPlayers) state.players.localPlayersIdxs
 
