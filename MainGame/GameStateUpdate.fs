@@ -19,10 +19,10 @@ type ShipPosition =
 type RemoteEvent =
     | DamageAndImpulse of int<GPI> * float32<Health> * TypedVector3<m/s> // Ship idx, damage, impulse
     | BulletDestroyed of int<BulletGuid> // Bullet GUID
-    | ShipState of int<GPI> * ShipPosition * TypedVector3<m/s> * TypedVector3<N> // Ship idx, position, heading, right, speed, thrust
+    | ShipState of int<GPI> * ShipPosition * TypedVector3<m/s> * TypedVector3<m/s^2> // Ship idx, position, heading, right, speed, acceleration
     | ShipDestroyed of int<GPI> // Ship idx
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
-    | SupplySpawned of int<GSI> * int<dms> * TypedVector3<m> * float32<m> * SupplyType // Supply idx, position, radius, type
+    | SupplySpawned of int<GSI> * int<dms> * TypedVector3<m> * float32<m> * SupplyType // Supply idx, life length, position, radius, type
     | SupplyDisappeared of int<GSI> // Supply idx
     | PlayerJoined of int<GPI> * int<LivePlayer> * string * ShipPosition // Ship idx, player name
     | PlayerLeft of int<GPI> // Ship idx
@@ -407,25 +407,23 @@ let destroyShips (events : TimedRemoteEvent[]) (ships : Ships) =
 
 
 /// Mutate posHost and the interpolation parameter posLerpT depending on sync events.
-let updateDeadReckoning frameDt (now : int<dms>) (ships : Ships) (shipTypes : MarkedArray<GPI, ShipType>) (events : TimedRemoteEvent[]) =
+let updateDeadReckoning frameDt (now : int<dms>) (ships : Ships) (events : TimedRemoteEvent[]) =
     let lerpTime = 0.3f<s>
     let updateOfShip =
         events
         |> Array.choose (
             function
-            | { time = t; event = ShipState (shipIdx, { position = pos; heading = heading; right = right }, speed, force) } -> Some (shipIdx, (t, pos, heading, right, speed, force))
+            | { time = t; event = ShipState (shipIdx, { position = pos; heading = heading; right = right }, speed, accel) } -> Some (shipIdx, (t, pos, heading, right, speed, accel))
             | _ -> None)
         |> Map.ofSeq
 
     for shipIdx in ships.headings.First .. 1<GPI> .. ships.headings.Last do
         match Map.tryFind shipIdx updateOfShip with
-        | Some (time, pos, heading, right, speed, force) ->
+        | Some (time, pos, heading, right, speed, accel) ->
             // Update posHost, speed and accel by integrating from the timestamp of the update event.
             // The old posHost is moved to posClient.
             ships.posClient.[shipIdx] <- ships.posHost.[shipIdx]
             let dt = int2float32 ((now - time) / dmsPerS)
-            let massInv = shipTypes.[shipIdx].InversedMass
-            let accel = massInv * force
             let speed2 = speed + dt * accel
             let pos = pos + 0.5f * dt * (speed + speed2)
             ships.posClient.[shipIdx] <- ships.posHost.[shipIdx]
@@ -523,66 +521,50 @@ let updateSupplies (dt : int<dms>) (now : int<dms>) (events : TimedRemoteEvent[]
         supplies.timeLeft.[idx] <- timeLeft
         
 
+let diffStates (state : State) (state' : State) =
+    let now = state'.time
+    let shipStates =
+        state'.players.localPlayersIdxs
+        |> List.fold (fun messages idx ->
+            let shipPos : ShipPosition =
+                { position = state'.ships.posHost.[idx]
+                  heading = state'.ships.headings.[idx]
+                  right = state'.ships.rights.[idx] }
+            { time = now
+              event = ShipState(idx, shipPos, state'.ships.speeds.[idx], state'.ships.accels.[idx]) }
+            :: messages) []
+
+    let shipsDestroyed =
+        state.players.localPlayersIdxs
+        |> List.fold (fun messages idx ->
+            if state.ships.health.[idx] > 0.0f<Health> &&
+               state'.ships.health.[idx] <= 0.0f<Health> then
+                { time = now
+                  event = ShipDestroyed idx }
+                :: messages
+            else
+                messages) []
+    
+    List.concat
+        [shipStates ; shipsDestroyed]
+
+
 /// Update the game state.
 let update dt events forces headings rights (description : Description) (state : State) =
     let guidIsLocal = guidIsLocal state.players.localPlayersIdxs
     
-    // Add new players.
-    let players =
-        events
-        |> Seq.choose (fun ev ->
-            match ev with
-            | { event = PlayerJoined(idx, liveId, name, pos) } -> Some (idx, name, pos)
-            | _ -> None)
-        |> Seq.fold (fun description (idx, name, pos) -> addPlayer idx name description) state.players
-
-    // Mark those that have been removed.
-    let players =
-        events
-        |> Seq.choose (fun ev ->
-            match ev with
-            | { event = PlayerLeft(idx) } -> Some idx
-            | _ -> None)
-        |> Seq.fold (fun description idx -> removePlayer idx description) players
-
-    // A dummy set of values for ship position and orientation. The correct values are set after the arrays are grown.
-    let dummyNewPos : ShipPosition =
-        { position = TypedVector3<m>(Vector3.Zero)
-          heading = TypedVector3<1>(-Vector3.UnitZ)
-          right = TypedVector3<1>(Vector3.UnitX)
-        }
-
-    // Grow the arrays of ship data, if needed.
-    let ships =
-        if state.players.numPlayers = players.numPlayers then
-            state.ships
-        else
-            seq { state.players.numPlayers .. players.numPlayers - 1 }
-            |> Seq.fold (fun ships _ -> addNewShip dummyNewPos ships) state.ships
-
-    // Set the position and orientation of each new ship
-    for e in events do
-        match e with
-        | { event = PlayerJoined(idx, liveId, name, pos) } ->
-            ships.posClient.[idx] <- pos.position
-            ships.posHost.[idx] <- pos.position
-            ships.posVisible.[idx] <- pos.position
-            ships.headings.[idx] <- pos.heading
-            ships.rights.[idx] <- pos.right
-        | _ -> ()
-
-    updateDeadReckoning dt state.time ships players.shipTypes events
+    updateDeadReckoning dt state.time state.ships events
 
     let bullets =
         createBullets guidIsLocal state.time state.bullets.bulletCounter events
         |> appendBullets state.bullets
     
-    let bulletHitsOnShips = computeHits guidIsLocal dt ships players.shipTypes state.bullets
+    let bulletHitsOnShips = computeHits guidIsLocal dt state.ships state.players.shipTypes state.bullets
     let bulletHitsOnAsteroids = computeBulletAsteroidHits guidIsLocal dt description.asteroids state.bullets
-    let crashes = computeCrashes dt description.asteroids ships players.shipTypes players.localPlayersIdxs
+    let crashes = computeCrashes dt description.asteroids state.ships state.players.shipTypes state.players.localPlayersIdxs
     
-    let damagesDueToHits = computeHitResponse ships players.shipTypes bulletHitsOnShips
-    let damagesDueToCrashes = computeCrashResponse description.asteroids ships players.shipTypes crashes
+    let damagesDueToHits = computeHitResponse state.ships state.players.shipTypes bulletHitsOnShips
+    let damagesDueToCrashes = computeCrashResponse description.asteroids state.ships state.players.shipTypes crashes
 
     let guidsRemotelyDestroyed =
         events
@@ -613,11 +595,11 @@ let update dt events forces headings rights (description : Description) (state :
             | { event = DamageAndImpulse (idx, damage, impulse) } -> Some (idx, impulse, damage)
             | _ -> None)
 
-    applyDamageAndImpulse ships.speeds ships.health damagesDueToCrashes
-    applyDamageAndImpulse ships.speeds ships.health damagesDueToHits
-    applyDamageAndImpulse ships.speeds ships.health remoteDamages
+    applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToCrashes
+    applyDamageAndImpulse state.ships.speeds state.ships.health damagesDueToHits
+    applyDamageAndImpulse state.ships.speeds state.ships.health remoteDamages
 
-    let ships = integrateShips dt ships players.shipTypes forces headings rights players.localPlayersIdxs
+    let ships = integrateShips dt state.ships state.players.shipTypes forces headings rights state.players.localPlayersIdxs
     destroyShips events ships
 
     // copy the supplies arrays before mutating
@@ -630,14 +612,33 @@ let update dt events forces headings rights (description : Description) (state :
 
     updateSupplies (dmsFromS dt) state.time events supplies
 
+    let state' =
+        { state with
+            ships = ships
+            bullets = bullets
+            time = state.time + dmsFromS dt
+            supplies = supplies
+        }
+
+    // Messages to send to other participants in an online multiplayer game.
+    let messages = diffStates state state'
+
+    let messages =
+        Seq.concat [ guidsDestroyedOnAsteroids ; guidsDestroyedOnHits ]
+        |> Seq.fold (fun messages guid ->
+            { time = state'.time
+              event = BulletDestroyed guid }
+            :: messages) messages
+    
+    let messages =
+        Seq.concat [ damagesDueToCrashes ; damagesDueToHits ]
+        |> Seq.fold (fun messages (idx, impulse, damage) ->
+            { time = state'.time
+              event = DamageAndImpulse (idx, damage, impulse) }
+            :: messages) messages
+
     // Return updated state and messages to send out
-    { state with
-        players = players
-        ships = ships
-        bullets = bullets
-        time = state.time + dmsFromS dt
-        supplies = supplies
-    }
+    state'
     ,
-    failwith "TODO: messages to send"
+    messages
 

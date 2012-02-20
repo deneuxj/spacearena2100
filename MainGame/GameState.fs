@@ -229,14 +229,18 @@ let getBulletSpeed (localPlayers : int<GPI> list) (ships : Ships) (player : int<
 
 let addPlayer newGPI playerName players =
     let numPlayers = max (1 + int newGPI) players.numPlayers
-    let playerNames =
-        seq { players.numPlayers .. int newGPI - 1 }
-        |> Seq.fold (fun playerNames _ -> MarkedArray.add "Unnamed" playerNames) players.playerNames
+    let playerNames, shipTypes =
+        seq { players.numPlayers .. int newGPI }
+        |> Seq.fold (fun (playerNames, shipTypes) _ ->
+            MarkedArray.add "Unnamed" playerNames,
+            MarkedArray.add ShipType.Bull shipTypes)
+            (players.playerNames, players.shipTypes)
     playerNames.[newGPI] <- playerName
 
     { players with
         numPlayers = numPlayers
         playerNames = playerNames
+        shipTypes = shipTypes
     }
 
 

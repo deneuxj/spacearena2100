@@ -97,6 +97,7 @@ let newComponent (game : Game, description : Description, initialState, session,
         dispose gdm
 
     let update (gt : GameTime) (state : State, computationTime) =
+        session.Update()
         let playerIndices =
             let rec work playerIndices localPlayers =
                 match playerIndices, localPlayers with
@@ -124,6 +125,7 @@ let newComponent (game : Game, description : Description, initialState, session,
                     match Network.receive session reader with
                     | Some(_, sender) ->
                         match Network.readTimedRemoteEvent reader with
+                        | { event = DamageAndImpulse _ }
                         | { event = BulletFired _ }
                         | { event = BulletDestroyed _ }
                         | { event = ShipState _ } as v -> // Ignore bullet and ship updates that come from us.
@@ -133,20 +135,28 @@ let newComponent (game : Game, description : Description, initialState, session,
                     | None -> keepGoing := false
             ]
 
-        let subject = 0<GPI>
-        (state.ships.posHost.[subject],
-         state.ships.headings.[subject],
-         state.ships.rights.[subject],
-         state.ships.speeds.[subject],
-         computationTime,
-         state.bullets.pos,
-         state.bullets.radii,
-         state.ships.posVisible.Content,
-         state.ships.speeds.Content,
-         state.ships.headings.Content,
-         state.ships.rights.Content,
-         state.players.shipTypes.Content
-        )
+        [
+            for gamer in session.LocalGamers do
+                let id = 1<LivePlayer> * int gamer.Id
+                match participants.GlobalPlayerIndexOfLivePlayer id with
+                | Some subject when int subject < state.players.numPlayers ->
+                    yield
+                        (state.ships.posHost.[subject],
+                         state.ships.headings.[subject],
+                         state.ships.rights.[subject],
+                         state.ships.speeds.[subject],
+                         computationTime,
+                         state.bullets.pos,
+                         state.bullets.radii,
+                         state.ships.posVisible.Content,
+                         state.ships.speeds.Content,
+                         state.ships.headings.Content,
+                         state.ships.rights.Content,
+                         state.players.shipTypes.Content
+                        )
+                | Some _ -> () // player not yet registered in the state.
+                | None -> ()
+        ]
         ,
         (state, humanControls, messages)
 
@@ -221,19 +231,56 @@ let newComponent (game : Game, description : Description, initialState, session,
         let newPlayers =
             messages
             |> List.choose (function
-                | { event = PlayerJoined(idx, live, _, _) } ->
-                    Some (idx, live)
+                | { event = PlayerJoined(idx, live, name, pos) } ->
+                    Some (idx, live, name, pos)
                 | _ -> None)
+
         let localPlayers =
             newPlayers
-            |> List.fold (fun localPlayers (idx, live) ->
+            |> List.fold (fun localPlayers (idx, live, _, _) ->
                 if session.AllGamers
                    |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
                     idx :: localPlayers
                 else
                     localPlayers) state.players.localPlayersIdxs
 
-        let state = { state with players = { state.players with localPlayersIdxs = localPlayers } }
+        let players =
+            newPlayers            
+            |> Seq.fold (fun players (idx, _, name, pos) -> addPlayer idx name players) state.players
+
+        // Mark those that have been removed.
+        let players =
+            messages
+            |> List.choose (fun ev ->
+                match ev with
+                | { event = PlayerLeft(idx) } -> Some idx
+                | _ -> None)
+            |> List.fold (fun players idx -> removePlayer idx players) players
+
+        // A dummy set of values for ship position and orientation. The correct values are set after the arrays are grown.
+        let dummyNewPos : ShipPosition =
+            { position = TypedVector3<m>(Vector3.Zero)
+              heading = TypedVector3<1>(-Vector3.UnitZ)
+              right = TypedVector3<1>(Vector3.UnitX)
+            }
+
+        // Grow the arrays of ship data, if needed.
+        let ships =
+            if state.players.numPlayers = players.numPlayers then
+                state.ships
+            else
+                seq { state.players.numPlayers .. players.numPlayers - 1 }
+                |> Seq.fold (fun ships _ -> addNewShip dummyNewPos ships) state.ships
+
+        // Set the position and orientation of each new ship
+        for (idx, liveId, name, pos) in newPlayers do
+            ships.posClient.[idx] <- pos.position
+            ships.posHost.[idx] <- pos.position
+            ships.posVisible.[idx] <- pos.position
+            ships.headings.[idx] <- pos.heading
+            ships.rights.[idx] <- pos.right
+
+        let state = { state with players = { players with localPlayersIdxs = localPlayers } ; ships = ships }
 
         participants.Update(state.time)
 
@@ -241,65 +288,66 @@ let newComponent (game : Game, description : Description, initialState, session,
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipSpeeds, shipHeadings, shipRights, shipTypes) =
-        match renderResources.Value with
-        | Some r ->
-            try
-                gdm.GraphicsDevice.SetRenderTarget(r.radar)
+    let draw (gt : GameTime) data =
+        for (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipSpeeds, shipHeadings, shipRights, shipTypes) in data do
+            match renderResources.Value with
+            | Some r ->
+                try
+                    gdm.GraphicsDevice.SetRenderTarget(r.radar)
+                    gdm.GraphicsDevice.Clear(Color.Black)
+                    let assets : Rendering.ShipRadar.ShipRadarRenderingAssets =
+                        { radar = r.radarTexture
+                          dot = r.dot
+                        }
+                    Rendering.ShipRadar.render assets r.spriteBatch pos heading right shipPos
+                finally
+                    gdm.GraphicsDevice.SetRenderTarget(null)
+
                 gdm.GraphicsDevice.Clear(Color.Black)
-                let assets : Rendering.ShipRadar.ShipRadarRenderingAssets =
-                    { radar = r.radarTexture
-                      dot = r.dot
-                    }
-                Rendering.ShipRadar.render assets r.spriteBatch pos heading right shipPos
-            finally
-                gdm.GraphicsDevice.SetRenderTarget(null)
 
-            gdm.GraphicsDevice.Clear(Color.Black)
+                let saveState = gdm.GraphicsDevice.SamplerStates.[0]
+                try
+                    gdm.GraphicsDevice.SamplerStates.[0] <- Graphics.SamplerState.LinearWrap
+                    renderAsteroids r.asteroidRenderer pos heading right
+                finally
+                    gdm.GraphicsDevice.SamplerStates.[0] <- saveState
 
-            let saveState = gdm.GraphicsDevice.SamplerStates.[0]
-            try
-                gdm.GraphicsDevice.SamplerStates.[0] <- Graphics.SamplerState.LinearWrap
-                renderAsteroids r.asteroidRenderer pos heading right
-            finally
-                gdm.GraphicsDevice.SamplerStates.[0] <- saveState
+                Rendering.renderBullets
+                    gdm.GraphicsDevice
+                    r.effect
+                    (fun V -> r.effect.View <- V)
+                    (fun P -> r.effect.Projection <- P)
+                    (fun W -> r.effect.World <- W)
+                    bulletPos
+                    bulletRadii
+                    pos
+                    heading
+                    right
 
-            Rendering.renderBullets
-                gdm.GraphicsDevice
-                r.effect
-                (fun V -> r.effect.View <- V)
-                (fun P -> r.effect.Projection <- P)
-                (fun W -> r.effect.World <- W)
-                bulletPos
-                bulletRadii
-                pos
-                heading
-                right
+                Rendering.renderShips
+                    r.shipRenderer
+                    pos
+                    heading
+                    right
+                    shipPos
+                    shipHeadings
+                    shipRights
+                    shipTypes
 
-            Rendering.renderShips
-                r.shipRenderer
-                pos
-                heading
-                right
-                shipPos
-                shipHeadings
-                shipRights
-                shipTypes
+                let ww = 1.0f<Screen> * float32 gdm.GraphicsDevice.Viewport.Width
+                let hh = 1.0f<Screen> * float32 gdm.GraphicsDevice.Viewport.Height
 
-            let ww = 1.0f<Screen> * float32 gdm.GraphicsDevice.Viewport.Width
-            let hh = 1.0f<Screen> * float32 gdm.GraphicsDevice.Viewport.Height
+                TargetingHud.renderTargeting r.spriteBatch r.marker r.circle ww hh Rendering.fieldOfView Rendering.ratio heading right pos speed shipPos shipSpeeds
 
-            TargetingHud.renderTargeting r.spriteBatch r.marker r.circle ww hh Rendering.fieldOfView Rendering.ratio heading right pos speed shipPos shipSpeeds
-
-            try
-                r.spriteBatch.Begin()
-                r.spriteBatch.DrawString(r.font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
-                r.spriteBatch.DrawString(r.font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(130.0f, 220.0f), Color.White)
-                let tsa = gdm.GraphicsDevice.Viewport.TitleSafeArea
-                r.spriteBatch.Draw(r.radar, Rectangle(tsa.Right - 200, tsa.Bottom - 200, 200, 200), new System.Nullable<_>(Rectangle(0, 0, Rendering.ShipRadar.width, Rendering.ShipRadar.height)), Color.White)
-            finally
-                r.spriteBatch.End()
-        | _ -> ()
+                try
+                    r.spriteBatch.Begin()
+                    r.spriteBatch.DrawString(r.font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
+                    r.spriteBatch.DrawString(r.font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(130.0f, 220.0f), Color.White)
+                    let tsa = gdm.GraphicsDevice.Viewport.TitleSafeArea
+                    r.spriteBatch.Draw(r.radar, Rectangle(tsa.Right - 200, tsa.Bottom - 200, 200, 200), new System.Nullable<_>(Rectangle(0, 0, Rendering.ShipRadar.width, Rendering.ShipRadar.height)), Color.White)
+                finally
+                    r.spriteBatch.End()
+            | _ -> ()
 
 
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)

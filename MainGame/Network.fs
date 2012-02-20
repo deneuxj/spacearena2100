@@ -453,8 +453,9 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
 
         if isHost then
             for newPlayer in newGamers.Value do
-                writeRemoteEventList packetWriter allMessages.Value
-                send SendDataOptions.ReliableInOrder session newPlayer packetWriter
+                for m in allMessages.Value do
+                    writeTimedRemoteEvent packetWriter m
+                    send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
         let messages, mapping' =
             if isHost then
@@ -501,8 +502,9 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
                 [], mapping.Value
         
         if isHost then
-            writeRemoteEventList packetWriter allMessages.Value
-            broadcast SendDataOptions.ReliableInOrder session packetWriter
+            for m in messages do
+                writeTimedRemoteEvent packetWriter m
+                broadcast SendDataOptions.ReliableInOrder session packetWriter
 
         numPlayers := numPlayers.Value + newGamers.Value.Length
         newGamers := []
@@ -516,7 +518,10 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
         |> Seq.exists (fun g -> g.IsLocal)
 
     member this.AddAiPlayer() = failwith "TODO"
-        
+
+    member this.GlobalPlayerIndexOfLivePlayer id =
+        mapping.Value.TryFind id
+                
     member this.Dispose() =
         unsubscribe.Value()
         hostChangedSubscription.Dispose()
