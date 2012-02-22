@@ -166,7 +166,7 @@ let getAllControls settings playerIndices =
     List.map2 getControls settings playerIndices
 
 /// Given inputs from local players, compute new heading, right vector, target speed and jet forces.
-let handlePlayerInputs (dt : float32<s>) localPlayers (ships : GameState.Ships) (shipTypes : MarkedArray<GameState.GPI, GameState.ShipType>) (controls : Controls list) =
+let handlePlayerInputs (dt : float32<s>) (players : Players) (ships : GameState.Ships) (controls : Controls list) =
     let clamp low hi x =
         x
         |> max low
@@ -174,8 +174,8 @@ let handlePlayerInputs (dt : float32<s>) localPlayers (ships : GameState.Ships) 
 
     let hrt =
         [
-            for shipIdx, controls, targetSpeed in List.zip3 localPlayers controls ships.localTargetSpeeds do
-                let shipType = shipTypes.[shipIdx]
+            for shipIdx, controls, targetSpeed in List.zip3 players.localPlayersIdxs controls players.localTargetSpeeds do
+                let shipType = players.shipTypes.[shipIdx]
                 let heading = ships.headings.[shipIdx]
                 let right = ships.rights.[shipIdx]
                 let up = TypedVector.cross3(right, heading)
@@ -200,9 +200,9 @@ let handlePlayerInputs (dt : float32<s>) localPlayers (ships : GameState.Ships) 
 
     let forces =
         [
-            for shipIdx, (heading, right, targetSpeed) in List.zip localPlayers hrt do
+            for shipIdx, (heading, right, targetSpeed) in List.zip players.localPlayersIdxs hrt do
                 let speed = ships.speeds.[shipIdx]
-                let shipType = shipTypes.[shipIdx]
+                let shipType = players.shipTypes.[shipIdx]
                 let up = TypedVector.cross3(right, heading)
                 let forceRight =
                     (computeSideForce shipType.SideDrag right speed
@@ -231,7 +231,7 @@ let stop() =
 /// - new ship states with updated special bullet counts,
 /// - tuples to construct RemoteEvents, and
 /// - the updated last bullet GUID.
-let fireBullets bulletCount localPlayers (ships : GameState.Ships) (controls : Controls list) =
+let fireBullets bulletCount (players : GameState.Players) (ships : GameState.Ships) (controls : Controls list) =
     let rec work bulletCount localPlayers controls timeLeft numBigBullets numFastBullets numHiRateBullets numMultiFire =
         match localPlayers, controls, timeLeft, numBigBullets, numFastBullets, numHiRateBullets, numMultiFire with
         | player :: localPlayers, control :: controls, t :: timeLeft, bb :: numBigBullets, fb :: numFastBullets, hrb :: numHiRateBullets, mf :: numMultiFire ->
@@ -292,7 +292,7 @@ let fireBullets bulletCount localPlayers (ships : GameState.Ships) (controls : C
         | _ -> failwith "List lengths don't match"
 
     let tmp = 
-        work bulletCount localPlayers controls ships.timeBeforeFire ships.numBigBullets ships.numFastBullets ships.numHighRate ships.numMultiFire
+        work bulletCount players.localPlayersIdxs controls players.timeBeforeFire players.numBigBullets players.numFastBullets players.numHighRate players.numMultiFire
 
     let timeLeft =
         tmp
@@ -329,7 +329,7 @@ let fireBullets bulletCount localPlayers (ships : GameState.Ships) (controls : C
                 |> List.max
             bulletCount
 
-    { ships with
+    { players with
         timeBeforeFire = timeLeft
         numBigBullets = numBigBullets
         numFastBullets = numFastBullets

@@ -170,7 +170,7 @@ let newComponent (game : Game, description : Description, initialState, session,
 
         let aiStates, aiControls =
             List.zip state.players.localAiPlayerIdxs state.ais
-            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed state.players.localAiPlayerIdxs state.ships) dt state ai idxAi)
+            |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed state.players) dt state ai idxAi)
             |> List.unzip
 
         let rec work humanControls aiControls humanPlayers aiPlayers =
@@ -187,17 +187,17 @@ let newComponent (game : Game, description : Description, initialState, session,
         let controls = //humanControls
             work humanControls aiControls state.players.localPlayersIdxs state.players.localAiPlayerIdxs
 
-        let ships, newBullets, bulletCount =
-            ShipControl.fireBullets state.bullets.bulletCounter state.players.localPlayersIdxs state.ships controls
+        let players, newBullets, bulletCount =
+            ShipControl.fireBullets state.bullets.bulletCounter state.players state.ships controls
 
         let controls =
-            ShipControl.handlePlayerInputs dt state.players.localPlayersIdxs ships state.players.shipTypes controls
+            ShipControl.handlePlayerInputs dt state.players state.ships controls
 
         let headings, rights, targetSpeeds, forces = controls
 
         let state =
             { state with
-                ships = ships
+                players = players
                 ais = aiStates
                 bullets = { state.bullets with bulletCounter = bulletCount } }
 
@@ -208,7 +208,7 @@ let newComponent (game : Game, description : Description, initialState, session,
 
         let state =
             { state with
-                ships = { state.ships with localTargetSpeeds = targetSpeeds } }
+                players = { state.players with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
         let state, messagesOut = GameStateUpdate.update dt timedEvents forces headings rights description state
 
@@ -357,7 +357,7 @@ let newComponent (game : Game, description : Description, initialState, session,
     comp
 
 
-let setup (game : Game, playerIndices) =
+let setup (game : Game, playerIndices : PlayerIndex seq) =
     let playerIndices = List.ofSeq playerIndices
     let scheduler = new Scheduler()
     let sys = new Environment(scheduler)
@@ -367,17 +367,20 @@ let setup (game : Game, playerIndices) =
             let numSignInSlots =
                 [1; 2; 4]
                 |> Seq.find(fun n -> n >= List.length playerIndices)
+
             let rec signIn = task {
                 let somePlayersAreNotSignedIn =
                     playerIndices
                     |> List.exists (fun (pi : PlayerIndex) -> GamerServices.Gamer.SignedInGamers.ItemOpt(pi).IsNone)
                 if somePlayersAreNotSignedIn then
-                    do! StorageTasks.doOnGuide (fun () -> GamerServices.Guide.ShowSignIn(numSignInSlots, true))
+                    do! StorageTasks.doOnGuide (fun () -> GamerServices.Guide.ShowSignIn(numSignInSlots, false))
+                    do! sys.WaitUntil(fun () -> not GamerServices.Guide.IsVisible)
                     return! signIn
                 else
                     return ()
             }
             do! signIn
+
             let! data = Network.start sys NetworkSessionType.SystemLink
             for pi in playerIndices do
                 match GamerServices.Gamer.SignedInGamers.ItemOpt(pi) with

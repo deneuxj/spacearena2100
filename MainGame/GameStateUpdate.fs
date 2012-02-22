@@ -394,7 +394,15 @@ let integrateShips (dt : float32<s>) (ships : Ships) (shipTypes : MarkedArray<GP
         posClient = MarkedArray posClient
         posHost = MarkedArray posHost
         posVisible = MarkedArray posVisible
-        timeBeforeFire = ships.timeBeforeFire |> List.map (fun x -> x - dtInDms) }
+    }
+
+
+let integratePlayers (dt : float32<s>) players =
+    let dtInDms = intFromFloat32 (dt * dmsPerS_f)
+
+    { players with
+        timeBeforeFire = players.timeBeforeFire |> List.map (fun x -> x - dtInDms)
+    }
 
 
 /// Mutate the health of ships which have been destroyed, setting it to 0.
@@ -470,13 +478,6 @@ let addNewShipRandom (random : System.Random) ships =
           posLerpT = MarkedArray.add 1.0f ships.posLerpT
           speeds = MarkedArray.add (TypedVector3<m/s>()) ships.speeds
           health = MarkedArray.add 1.0f<Health> ships.health
-          numFastBullets = 0 :: ships.numFastBullets
-          numBigBullets = 0 :: ships.numBigBullets
-          numMultiFire = 0 :: ships.numMultiFire
-          numHighRate = 0 :: ships.numHighRate
-          timeBeforeFire = 0<dms> :: ships.timeBeforeFire
-          timeBeforeRespawn = -1<dms> :: ships.timeBeforeRespawn
-          localTargetSpeeds = 0.0f<m/s> :: ships.localTargetSpeeds
           scores = MarkedArray.add 0.0f<Points> ships.scores
         }
 
@@ -493,13 +494,6 @@ let addNewShip (position : ShipPosition) ships =
       posLerpT = MarkedArray.add 1.0f ships.posLerpT
       speeds = MarkedArray.add (TypedVector3<m/s>()) ships.speeds
       health = MarkedArray.add 1.0f<Health> ships.health
-      numFastBullets = 0 :: ships.numFastBullets
-      numBigBullets = 0 :: ships.numBigBullets
-      numMultiFire = 0 :: ships.numMultiFire
-      numHighRate = 0 :: ships.numHighRate
-      timeBeforeFire = 0<dms> :: ships.timeBeforeFire
-      timeBeforeRespawn = -1<dms> :: ships.timeBeforeRespawn
-      localTargetSpeeds = 0.0f<m/s> :: ships.localTargetSpeeds
       scores = MarkedArray.add 0.0f<Points> ships.scores
     }
 
@@ -614,6 +608,7 @@ let update dt events forces headings rights (description : Description) (state :
 
     let state' =
         { state with
+            players = state.players |> integratePlayers dt
             ships = ships
             bullets = bullets
             time = state.time + dmsFromS dt

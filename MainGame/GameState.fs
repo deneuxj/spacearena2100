@@ -75,6 +75,14 @@ type Players =
       shipTypes : MarkedArray<GPI, ShipType>;
       /// Players who left the game early.
       gonePlayerIdxs : int<GPI> list;
+      numFastBullets : int list;
+      numBigBullets : int list;
+      numMultiFire : int list;
+      numHighRate : int list;
+      timeBeforeFire : int<dms> list;
+      /// -1 means "not dead".
+      timeBeforeRespawn : int<dms> list;
+      localTargetSpeeds : float32<m/s> list;
     }
     
 type Ships =
@@ -91,15 +99,6 @@ type Ships =
       speeds : MarkedArray<GPI, TypedVector3<m/s>>;
       accels : MarkedArray<GPI, TypedVector3<m/s^2>>;
       health : MarkedArray<GPI, float32<Health>>;
-      // Local players only
-      numFastBullets : int list;
-      numBigBullets : int list;
-      numMultiFire : int list;
-      numHighRate : int list;
-      timeBeforeFire : int<dms> list;
-      /// -1 means "not dead".
-      timeBeforeRespawn : int<dms> list;
-      localTargetSpeeds : float32<m/s> list;
       scores : MarkedArray<GPI, float32<Points>> }
 
 type Bullets =
@@ -169,6 +168,13 @@ let emptyState numSupplies =
           localAiPlayerIdxs = []
           shipTypes = MarkedArray [||]
           gonePlayerIdxs = []
+          numFastBullets = []
+          numBigBullets = []
+          numMultiFire = []
+          numHighRate = []
+          timeBeforeFire = []
+          timeBeforeRespawn = []
+          localTargetSpeeds = []
         }
 
     let ships =
@@ -181,13 +187,6 @@ let emptyState numSupplies =
           speeds = MarkedArray [||]
           accels = MarkedArray [||]
           health = MarkedArray [||]
-          numFastBullets = []
-          numBigBullets = []
-          numMultiFire = []
-          numHighRate = []
-          timeBeforeFire = []
-          timeBeforeRespawn = []
-          localTargetSpeeds = []
           scores = MarkedArray [||]
         }
 
@@ -216,10 +215,10 @@ let emptyState numSupplies =
     }
 
 
-let getBulletSpeed (localPlayers : int<GPI> list) (ships : Ships) (player : int<GPI>) =
-    match List.tryFindIndex ((=) player) localPlayers with
+let getBulletSpeed (players : Players) (player : int<GPI>) =
+    match List.tryFindIndex ((=) player) players.localPlayersIdxs with
     | Some idx ->
-        if ships.numFastBullets.[idx] > 0 then
+        if players.numFastBullets.[idx] > 0 then
             BulletConstants.fastSpeed
         else
             BulletConstants.speed
