@@ -235,14 +235,29 @@ let newComponent (game : Game, description : Description, initialState, session,
                     Some (idx, live, name, pos)
                 | _ -> None)
 
-        let localPlayers =
+        let localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds =
             newPlayers
-            |> List.fold (fun localPlayers (idx, live, _, _) ->
+            |> List.fold (fun ((localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds) as lists) (idx, live, _, _) ->
                 if session.AllGamers
                    |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
-                    idx :: localPlayers
+                    idx :: localPlayers,
+                    0 :: numFastBullets,
+                    0 :: numBigBullets,
+                    0 :: numHighRate,
+                    0 :: numMultiFire,
+                    0<dms> :: timeBeforeFire,
+                    -1<dms> :: timeBeforeRespawn,
+                    0.0f<m/s> :: targetSpeeds
                 else
-                    localPlayers) state.players.localPlayersIdxs
+                    lists)
+                (state.players.localPlayersIdxs,
+                 state.players.numFastBullets,
+                 state.players.numBigBullets,
+                 state.players.numHighRate,
+                 state.players.numMultiFire,
+                 state.players.timeBeforeFire,
+                 state.players.timeBeforeRespawn,
+                 state.players.localTargetSpeeds)
 
         let players =
             newPlayers            
@@ -280,7 +295,19 @@ let newComponent (game : Game, description : Description, initialState, session,
             ships.headings.[idx] <- pos.heading
             ships.rights.[idx] <- pos.right
 
-        let state = { state with players = { players with localPlayersIdxs = localPlayers } ; ships = ships }
+        let state =
+            { state with
+                players =
+                    { players with
+                        localPlayersIdxs = localPlayers
+                        numFastBullets = numFastBullets
+                        numBigBullets = numBigBullets
+                        numHighRate = numHighRate
+                        numMultiFire = numMultiFire
+                        timeBeforeFire = timeBeforeFire
+                        timeBeforeRespawn = timeBeforeRespawn 
+                        localTargetSpeeds = targetSpeeds }
+                ships = ships }
 
         participants.Update(state.time)
 
