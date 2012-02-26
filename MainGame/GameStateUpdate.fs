@@ -17,6 +17,7 @@ type ShipPosition =
 
 /// Synchronization message types sent over the network
 type RemoteEvent =
+    | BuildAsteroids of int * float32<m> // Seed, size
     | DamageAndImpulse of int<GPI> * float32<Health> * TypedVector3<m/s> // Ship idx, damage, impulse
     | BulletDestroyed of int<BulletGuid> // Bullet GUID
     | ShipState of int<GPI> * ShipPosition * TypedVector3<m/s> * TypedVector3<m/s^2> // Ship idx, position, heading, right, speed, acceleration

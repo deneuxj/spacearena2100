@@ -54,12 +54,12 @@ let readTypedInt<[<Measure>]'M> (reader : PacketReader) =
 
 
 let writeTypedFloat (writer : PacketWriter) (v : float32<_>) =
-    writer.Write(int v)
+    writer.Write(float32 v)
 
 
 let readTypedFloat<[<Measure>]'M> (reader : PacketReader) =
-    reader.ReadSingle()
-    |> LanguagePrimitives.Float32WithMeasure<'M>
+    let x = reader.ReadSingle()
+    LanguagePrimitives.Float32WithMeasure<'M> x
 
 
 let writeIntList (writer : PacketWriter) (xs : int<_> list) =
@@ -146,6 +146,10 @@ let writeRemoteEvent (writer : PacketWriter) ev =
     | PlayerLeft(idx) ->
         writer.Write(8uy)
         writeTypedInt writer idx
+    | BuildAsteroids(seed, size) ->
+        writer.Write(9uy)
+        writer.Write(seed)
+        writeTypedFloat writer size
 
 
 let writeTimedRemoteEvent (writer : PacketWriter) ev =
@@ -199,8 +203,12 @@ let readRemoteEvent (reader : PacketReader) =
     | 8uy ->
         let idx = readTypedInt reader
         PlayerLeft(idx)
-    | _ ->
-        failwith "Unexpected value for RemoteEvent"
+    | 9uy ->
+        let seed = reader.ReadInt32()
+        let size = readTypedFloat reader
+        BuildAsteroids(seed, size)
+    | unexpected ->
+        failwithf "Unexpected value %d for RemoteEvent" (int unexpected)
 
 
 let readTimedRemoteEvent (reader : PacketReader) =
@@ -275,8 +283,7 @@ let buildOctree (fieldSize : float32<m>) (pos : MarkedArray<AstIdx, TypedVector3
     octree
 
 
-let newDescription (random : System.Random) =
-    let fieldSize = 5000.0f<m>
+let newDescription (random : System.Random, fieldSize : float32<m>) =
     let randomPos() =
         (double fieldSize
          *
@@ -328,6 +335,7 @@ let newDescription (random : System.Random) =
             
 type SessionMode = Server | Client
 
+
 let tryFindSession (sys : Environment) sessionType =
     let rnd = new Random()
 
@@ -342,6 +350,7 @@ let tryFindSession (sys : Environment) sessionType =
                 session := Some sessions.[0]
         return session.Value
     }
+
 
 let joinOrStart (sys : Environment) sessionType =
     task {
@@ -360,9 +369,11 @@ let joinOrStart (sys : Environment) sessionType =
         | Server ->
             session.AllowHostMigration <- true
             session.AllowJoinInProgress <- true
+            session.StartGame()
         | Client -> ()
         return mode, session
     }
+
 
 let waitUntilLocalPlayerJoined (sys : Environment) (session : NetworkSession) =
     task {
@@ -371,73 +382,58 @@ let waitUntilLocalPlayerJoined (sys : Environment) (session : NetworkSession) =
             let! newPlayer = sys.AwaitEvent(session.GamerJoined)
             if newPlayer.Gamer.IsLocal then
                 localPlayer := Some <| (newPlayer.Gamer :?> LocalNetworkGamer)
-        return localPlayer
+        return localPlayer.Value
     }
 
-let sendSeed session (seed : int32) (gamerJoined : GamerJoinedEventArgs) =
-    let packetWriter = new PacketWriter()
-    packetWriter.Write(seed)
-    send SendDataOptions.ReliableInOrder session gamerJoined.Gamer packetWriter
-
-let startServer (sys : Environment) (session : NetworkSession) (seed : int32) =
-    task {
-        let! _ = waitUntilLocalPlayerJoined sys session
-        let playerJoinedSubscription =
-            session.GamerJoined.Subscribe(
-                fun (gamerJoined : GamerJoinedEventArgs) ->
-                    if not <| gamerJoined.Gamer.IsLocal then sendSeed session seed gamerJoined
-            )
-        return playerJoinedSubscription
-    }
 
 let start sys sessionType =
     task {
         let! mode, session = joinOrStart sys sessionType
-        let! seed, random, description, unsubscribe =
+        let! seed, size, random, description =
             match mode with
             | Server ->
                 task {
                     let seed = int32 <| System.DateTime.Now.Ticks % (1L + int64 Int32.MaxValue)
+                    let size = 5000.0f<m>
                     let random = new System.Random(seed)
-                    let description = newDescription random
-                    let! subscription = startServer sys session seed
-                    return seed, random, description, fun () -> subscription.Dispose()
+                    let description = newDescription(random, size)
+                    return seed, size, random, description
                 }
             | Client ->
                 let reader = new PacketReader()
                 task {
                     let! _ = waitUntilLocalPlayerJoined sys session
-                    let seed = ref None
-                    while seed.Value.IsNone do
+                    let seedAndSize = ref None
+                    while seedAndSize.Value.IsNone do
+                        session.Update()
                         match receive session reader with
                         | None -> ()
-                        | Some _ -> seed := Some <| reader.ReadInt32()
-                    let random = new System.Random(seed.Value.Value)
-                    let description = newDescription random
-                    return seed.Value.Value, random, description, fun () -> ()
+                        | Some _ ->
+                            match readTimedRemoteEvent reader with
+                            | { event = BuildAsteroids(seed, size) } ->
+                                seedAndSize := Some (seed, size)
+                            | { event = PlayerJoined _ } | { event = PlayerLeft _ } as ev ->
+                                failwithf "Protocol error, expected BuildAsteroids got %A." ev.event
+                            | _ ->
+                                () // Some game state update messages may manage to reach us before we are ready. Ignore them.
+                                
+                        do! sys.WaitNextFrame()
+                    let (Some(seed, size)) = seedAndSize.Value
+                    let random = new System.Random(seed)
+                    let description = newDescription(random, size)
+                    return seed, size, random, description
                 }
-        return session, seed, random, description, unsubscribe
+        return session, seed, size, random, description
     }
 
-type Participants(session : NetworkSession, seed, random : System.Random, unsubscribe) =
+
+type Participants(session : NetworkSession, seed, size, random : System.Random) =
     let newGamers : NetworkGamer list ref = ref []
     let removedGamers : NetworkGamer list ref = ref []
     let packetWriter = new PacketWriter()
     let mapping = ref Map.empty
-    let unsubscribe = ref unsubscribe
     let allMessages = ref []
     let numPlayers = ref 0
-
-    let updateSubscription (hostChanged : HostChangedEventArgs) =
-        unsubscribe.Value()
-        if hostChanged.NewHost.IsLocal then
-            let subscription =
-                session.GamerJoined.Subscribe(
-                    fun (gamerJoined : GamerJoinedEventArgs) ->
-                        if not <| gamerJoined.Gamer.IsLocal then sendSeed session seed gamerJoined)
-            unsubscribe := fun () -> subscription.Dispose()
-        else
-            unsubscribe := fun () -> ()
 
     let isHost() =
         session.AllGamers
@@ -446,60 +442,60 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
     
     let gamerJoinedSubscription = session.GamerJoined.Subscribe (fun (gamerJoined : GamerJoinedEventArgs) -> newGamers := gamerJoined.Gamer :: newGamers.Value)
     let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
-    let hostChangedSubscription = session.HostChanged.Subscribe updateSubscription
 
     member this.Update(time) : unit =
         let isHost = isHost()
 
         if isHost then
             for newPlayer in newGamers.Value do
+                let firstMessage = { time = 0<dms>; event = BuildAsteroids(seed, size) }
+                writeTimedRemoteEvent packetWriter firstMessage
+                send SendDataOptions.ReliableInOrder session newPlayer packetWriter
+
                 for m in allMessages.Value do
                     writeTimedRemoteEvent packetWriter m
                     send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
         let messages, mapping' =
-            if isHost then
-                let newGPIs =
-                    newGamers.Value
-                    |> List.mapi (fun i _ -> 1<GPI> * (numPlayers.Value + i))
+            let newGPIs =
+                newGamers.Value
+                |> List.mapi (fun i _ -> 1<GPI> * (numPlayers.Value + i))
 
-                let mapping =
-                    List.zip newGamers.Value newGPIs
-                    |> List.fold (fun m (g, gpi) -> Map.add (1<LivePlayer> * int g.Id) gpi m) mapping.Value
+            let mapping =
+                List.zip newGamers.Value newGPIs
+                |> List.fold (fun m (g, gpi) -> Map.add (1<LivePlayer> * int g.Id) gpi m) mapping.Value
 
-                let newShipPositions =
-                    newGPIs
-                    |> List.map (fun _ ->
-                        let pos = TypedVector3<m>(random.NextVector3(100.0f))
-                        let orientation = random.NextQuaternion()
-                        let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
-                        let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
-                        { position = pos
-                          heading = heading
-                          right = right })
+            let newShipPositions =
+                newGPIs
+                |> List.map (fun _ ->
+                    let pos = TypedVector3<m>(random.NextVector3(100.0f))
+                    let orientation = random.NextQuaternion()
+                    let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
+                    let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
+                    { position = pos
+                      heading = heading
+                      right = right })
 
-                let newNames =
-                    newGamers.Value
-                    |> Seq.map (fun g -> g.Gamertag)
-                    |> List.ofSeq
+            let newNames =
+                newGamers.Value
+                |> Seq.map (fun g -> g.Gamertag)
+                |> List.ofSeq
 
-                let liveIds =
-                    newGamers.Value
-                    |> List.map (fun gamer -> 1<LivePlayer> * int gamer.Id)
+            let liveIds =
+                newGamers.Value
+                |> List.map (fun gamer -> 1<LivePlayer> * int gamer.Id)
 
-                let playerAddedMessages =
-                    SeqUtil.listZip4 newGPIs liveIds newNames newShipPositions
-                    |> List.map (fun data -> { time = time; event = PlayerJoined data })
+            let playerAddedMessages =
+                SeqUtil.listZip4 newGPIs liveIds newNames newShipPositions
+                |> List.map (fun data -> { time = time; event = PlayerJoined data })
 
-                let playerRemovedMessages =
-                    removedGamers.Value
-                    |> Seq.choose (fun g -> mapping.TryFind (1<LivePlayer> * int g.Id))
-                    |> Seq.map (fun data -> { time = time; event = PlayerLeft data })
-                    |> List.ofSeq
+            let playerRemovedMessages =
+                removedGamers.Value
+                |> Seq.choose (fun g -> mapping.TryFind (1<LivePlayer> * int g.Id))
+                |> Seq.map (fun data -> { time = time; event = PlayerLeft data })
+                |> List.ofSeq
 
-                playerAddedMessages @ playerRemovedMessages, mapping
-            else
-                [], mapping.Value
+            playerAddedMessages @ playerRemovedMessages, mapping
         
         if isHost then
             for m in messages do
@@ -523,8 +519,6 @@ type Participants(session : NetworkSession, seed, random : System.Random, unsubs
         mapping.Value.TryFind id
                 
     member this.Dispose() =
-        unsubscribe.Value()
-        hostChangedSubscription.Dispose()
         gamerLeftSubscription.Dispose()
         gamerJoinedSubscription.Dispose()
 

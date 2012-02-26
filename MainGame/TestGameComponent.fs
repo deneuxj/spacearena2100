@@ -35,9 +35,9 @@ type RenderResources =
     }
 
 
-let newComponent (game : Game, description : Description, initialState, session, seed, random, unsubscribe) =
+let newComponent (game : Game, description : Description, initialState, session, seed, size, random) =
 
-    let participants = new Network.Participants(session, seed, random, unsubscribe)
+    let participants = new Network.Participants(session, seed, size, random)
         
     let content = new Content.ContentManager(game.Services)
     let gdm =
@@ -224,6 +224,7 @@ let newComponent (game : Game, description : Description, initialState, session,
                 | ShipDestroyed _
                 | SupplyDisappeared _ | SupplySpawned _ -> SendDataOptions.Reliable
                 | ShipState _ -> SendDataOptions.None
+                | BuildAsteroids _ -> failwith "Cannot change asteroids field during the game"
         
             Network.broadcast sendOptions session writer
 
@@ -379,7 +380,6 @@ let newComponent (game : Game, description : Description, initialState, session,
 
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
     comp.Disposed.Add <| fun _ ->
-        unsubscribe()
         participants.Dispose()
     comp
 
@@ -396,10 +396,15 @@ let setup (game : Game, playerIndices : PlayerIndex seq) =
                 |> Seq.find(fun n -> n >= List.length playerIndices)
 
             let rec signIn = task {
-                let somePlayersAreNotSignedIn =
+                let notSignedInPlayers =
                     playerIndices
-                    |> List.exists (fun (pi : PlayerIndex) -> GamerServices.Gamer.SignedInGamers.ItemOpt(pi).IsNone)
-                if somePlayersAreNotSignedIn then
+                    |> List.filter (fun (pi : PlayerIndex) -> GamerServices.Gamer.SignedInGamers.ItemOpt(pi).IsNone)
+                if not <| List.isEmpty notSignedInPlayers then
+                    do! StorageTasks.doOnGuide (fun () ->
+                        let indices =
+                            notSignedInPlayers
+                            |> List.fold (fun s pi -> sprintf "%s [%d]" s (int pi)) ""
+                        StorageTasks.info (sprintf "The following controllers must sign in: %s" indices))
                     do! StorageTasks.doOnGuide (fun () -> GamerServices.Guide.ShowSignIn(numSignInSlots, false))
                     do! sys.WaitUntil(fun () -> not GamerServices.Guide.IsVisible)
                     return! signIn
@@ -429,10 +434,10 @@ let setup (game : Game, playerIndices : PlayerIndex seq) =
                 scheduler.RunFor dt
                 if not scheduler.HasLiveTasks then
                     match initData.Value with
-                    | Some (session, seed, random, description, unsubscribe) ->
+                    | Some (session, seed, size, random, description) ->
                         let initialState = emptyState 0
                         game.Components.Remove(this) |> ignore
-                        game.Components.Add(newComponent (game, description, initialState, session, seed, random, unsubscribe))
+                        game.Components.Add(newComponent (game, description, initialState, session, seed, size, random))
                     | None -> failwith "Failed to create or join session"
         }
 
