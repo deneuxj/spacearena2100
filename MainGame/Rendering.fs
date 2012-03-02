@@ -105,6 +105,7 @@ let renderShips (renderer : InstancedModelRenderer) (position : TypedVector3<m>)
         Matrix.CreatePerspectiveFieldOfView(float32 fieldOfView, float32 ratio, float32 nearPlane, float32 farPlane)
 
     let inline computeTransform (pos : TypedVector3<m>) (heading : TypedVector3<1>) (right : TypedVector3<1>) (shipType : GameState.ShipType) =
+        let up = TypedVector.cross3(right, heading).v
         Matrix.CreateScale(float32 shipType.BoundingSphereRadius)
         *
         Matrix.CreateWorld(pos.v, heading.v, up)
