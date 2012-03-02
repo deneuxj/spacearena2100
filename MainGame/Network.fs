@@ -456,14 +456,10 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
                     writeTimedRemoteEvent packetWriter m
                     send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
-        let messages, mapping' =
+        let messages =
             let newGPIs =
                 newGamers.Value
                 |> List.mapi (fun i _ -> 1<GPI> * (numPlayers.Value + i))
-
-            let mapping =
-                List.zip newGamers.Value newGPIs
-                |> List.fold (fun m (g, gpi) -> Map.add (1<LivePlayer> * int g.Id) gpi m) mapping.Value
 
             let newShipPositions =
                 newGPIs
@@ -491,11 +487,11 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
 
             let playerRemovedMessages =
                 removedGamers.Value
-                |> Seq.choose (fun g -> mapping.TryFind (1<LivePlayer> * int g.Id))
+                |> Seq.choose (fun g -> mapping.Value.TryFind (1<LivePlayer> * int g.Id))
                 |> Seq.map (fun data -> { time = time; event = PlayerLeft data })
                 |> List.ofSeq
 
-            playerAddedMessages @ playerRemovedMessages, mapping
+            playerAddedMessages @ playerRemovedMessages
         
         if isHost then
             for m in messages do
@@ -505,7 +501,6 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
         numPlayers := numPlayers.Value + newGamers.Value.Length
         newGamers := []
         removedGamers := []
-        mapping := mapping'
         allMessages := messages @ allMessages.Value
 
 
@@ -517,7 +512,10 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
 
     member this.GlobalPlayerIndexOfLivePlayer id =
         mapping.Value.TryFind id
-                
+
+    member this.SetGlobalPlayerIndexOfLivePlayer (id, gpi) =
+        mapping := mapping.Value.Add(id, gpi)
+
     member this.Dispose() =
         gamerLeftSubscription.Dispose()
         gamerJoinedSubscription.Dispose()

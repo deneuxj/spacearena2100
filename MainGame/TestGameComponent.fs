@@ -201,16 +201,21 @@ let newComponent (game : Game, description : Description, initialState, session,
                 ais = aiStates
                 bullets = { state.bullets with bulletCounter = bulletCount } }
 
-        let timedEvents =
+        let bulletEvents =
             newBullets
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
+
+        let events =
+            List.append messages bulletEvents
             |> Array.ofList
 
         let state =
             { state with
                 players = { state.players with localTargetSpeeds = targetSpeeds } }
         let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
-        let state, messagesOut = GameStateUpdate.update dt timedEvents forces headings rights description state
+        let state, messagesOut = GameStateUpdate.update dt events forces headings rights description state
+
+        let messagesOut = List.append messagesOut bulletEvents
 
         // Send messages
         let writer = new PacketWriter()
@@ -220,9 +225,9 @@ let newComponent (game : Game, description : Description, initialState, session,
                 match msg.event with
                 | PlayerJoined _ | PlayerLeft _
                 | BulletFired _ | BulletDestroyed _
+                | SupplyDisappeared _ | SupplySpawned _ -> SendDataOptions.ReliableInOrder
                 | DamageAndImpulse _
-                | ShipDestroyed _
-                | SupplyDisappeared _ | SupplySpawned _ -> SendDataOptions.Reliable
+                | ShipDestroyed _ -> SendDataOptions.Reliable
                 | ShipState _ -> SendDataOptions.None
                 | BuildAsteroids _ -> failwith "Cannot change asteroids field during the game"
         
@@ -235,6 +240,9 @@ let newComponent (game : Game, description : Description, initialState, session,
                 | { event = PlayerJoined(idx, live, name, pos) } ->
                     Some (idx, live, name, pos)
                 | _ -> None)
+
+        for gpi, id, _, _ in newPlayers do
+            participants.SetGlobalPlayerIndexOfLivePlayer(id, gpi)
 
         let localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds =
             newPlayers
