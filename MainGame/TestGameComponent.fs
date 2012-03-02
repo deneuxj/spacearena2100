@@ -135,6 +135,15 @@ let newComponent (game : Game, description : Description, initialState, session,
                     | None -> keepGoing := false
             ]
 
+        // Fast-forward the clock if someone else's clock is ahead of ours.
+        let time =
+            messages
+            |> List.map (fun msg -> msg.time)
+            |> List.append [state.time]
+            |> List.max
+
+        let state = { state with time = time }
+
         [
             for gamer in session.LocalGamers do
                 let id = 1<LivePlayer> * int gamer.Id
@@ -187,34 +196,34 @@ let newComponent (game : Game, description : Description, initialState, session,
         let controls = //humanControls
             work humanControls aiControls state.players.localPlayersIdxs state.players.localAiPlayerIdxs
 
+        // Firing
         let players, newBullets, bulletCount =
             ShipControl.fireBullets state.bullets.bulletCounter state.players state.ships controls
-
-        let controls =
-            ShipControl.handlePlayerInputs dt state.players state.ships controls
-
-        let headings, rights, targetSpeeds, forces = controls
-
-        let state =
-            { state with
-                players = players
-                ais = aiStates
-                bullets = { state.bullets with bulletCounter = bulletCount } }
 
         let bulletEvents =
             newBullets
             |> List.map (fun data -> { time = state.time; event = RemoteEvent.BulletFired data } )
 
+        // Flight assistance
+        let headings, rights, targetSpeeds, forces =
+            ShipControl.handlePlayerInputs dt players state.ships controls
+
+        // Update local state.
+        let state =
+            { state with
+                players = { players with localTargetSpeeds = targetSpeeds }
+                ais = aiStates
+                bullets = { state.bullets with bulletCounter = bulletCount } }
+
+        // Add events for localy created bullets
         let events =
             List.append messages bulletEvents
             |> Array.ofList
 
-        let state =
-            { state with
-                players = { state.players with localTargetSpeeds = targetSpeeds } }
-        let dt = 1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32)
+        // Update simulation of all entities
         let state, messagesOut = GameStateUpdate.update dt events forces headings rights description state
 
+        // Include locally created bullets in the messages to send
         let messagesOut = List.append messagesOut bulletEvents
 
         // Send messages
