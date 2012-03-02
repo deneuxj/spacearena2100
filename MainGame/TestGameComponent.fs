@@ -32,6 +32,7 @@ type RenderResources =
       dot : Graphics.Texture2D
       marker : Graphics.Texture2D
       circle : Graphics.Texture2D
+      log : TextIconLogging.Log
     }
 
 
@@ -71,6 +72,8 @@ let newComponent (game : Game, description : Description, initialState, session,
         let marker = content.Load<Graphics.Texture2D>("Content\\marker")
         let circle = content.Load<Graphics.Texture2D>("Content\\circle")
 
+        let log = TextIconLogging.Log([||], [||], courier, 0, 0, 20.0f, 5, 5.0f<s>)
+
         renderResources :=
             Some {
                 shipRenderer = new InstancedModelRenderer(gdm, ship, InstancingTechnique = instancingTechnique)
@@ -85,6 +88,7 @@ let newComponent (game : Game, description : Description, initialState, session,
                 dot = dotTexture
                 marker = marker
                 circle = circle
+                log = log
             }
 
     let disposeAll() =
@@ -98,6 +102,10 @@ let newComponent (game : Game, description : Description, initialState, session,
 
     let update (gt : GameTime) (state : State, computationTime) =
         session.Update()
+        match renderResources.Value with
+        | Some { log = log } -> log.Update(1.0f<s> * (gt.ElapsedGameTime.TotalSeconds |> float32))
+        | None -> ()
+
         let playerIndices =
             let rec work playerIndices localPlayers =
                 match playerIndices, localPlayers with
@@ -144,28 +152,31 @@ let newComponent (game : Game, description : Description, initialState, session,
 
         let state = { state with time = time }
 
-        [
-            for gamer in session.LocalGamers do
-                let id = 1<LivePlayer> * int gamer.Id
-                match participants.GlobalPlayerIndexOfLivePlayer id with
-                | Some subject when int subject < state.players.numPlayers ->
-                    yield
-                        (state.ships.posHost.[subject],
-                         state.ships.headings.[subject],
-                         state.ships.rights.[subject],
-                         state.ships.speeds.[subject],
-                         computationTime,
-                         state.bullets.pos,
-                         state.bullets.radii,
-                         state.ships.posVisible.Content,
-                         state.ships.speeds.Content,
-                         state.ships.headings.Content,
-                         state.ships.rights.Content,
-                         state.players.shipTypes.Content
-                        )
-                | Some _ -> () // player not yet registered in the state.
-                | None -> ()
-        ]
+        let renderData =
+            computationTime,
+            [
+                for gamer in session.LocalGamers do
+                    let id = 1<LivePlayer> * int gamer.Id
+                    match participants.GlobalPlayerIndexOfLivePlayer id with
+                    | Some subject when int subject < state.players.numPlayers ->
+                        yield
+                            (state.ships.posHost.[subject],
+                             state.ships.headings.[subject],
+                             state.ships.rights.[subject],
+                             state.ships.speeds.[subject],
+                             state.bullets.pos,
+                             state.bullets.radii,
+                             state.ships.posVisible.Content,
+                             state.ships.speeds.Content,
+                             state.ships.headings.Content,
+                             state.ships.rights.Content,
+                             state.players.shipTypes.Content
+                            )
+                    | Some _ -> () // player not yet registered in the state.
+                    | None -> ()
+            ]
+
+        renderData
         ,
         (state, humanControls, messages)
 
@@ -250,8 +261,11 @@ let newComponent (game : Game, description : Description, initialState, session,
                     Some (idx, live, name, pos)
                 | _ -> None)
 
-        for gpi, id, _, _ in newPlayers do
+        for gpi, id, name, _ in newPlayers do
             participants.SetGlobalPlayerIndexOfLivePlayer(id, gpi)
+            match renderResources.Value with
+            | Some { log = log } -> log.AddMessage(TextIcons.String(sprintf "%s joined" name, TextIcons.Nil))
+            | None -> ()
 
         let localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds =
             newPlayers
@@ -333,8 +347,8 @@ let newComponent (game : Game, description : Description, initialState, session,
 
     let renderAsteroids = Rendering.renderAsteroids (1.0f / 200.0f) description.asteroids.pos.Content description.asteroids.rotations.Content description.asteroids.radius.Content description.asteroids.fieldSizes
     
-    let draw (gt : GameTime) data =
-        for (pos, heading, right, speed : TypedVector3<m/s>, computationTime : System.TimeSpan, bulletPos, bulletRadii, shipPos, shipSpeeds, shipHeadings, shipRights, shipTypes) in data do
+    let draw (gt : GameTime) (computationTime : System.TimeSpan, data) =
+        for (pos, heading, right, speed : TypedVector3<m/s>, bulletPos, bulletRadii, shipPos, shipSpeeds, shipHeadings, shipRights, shipTypes) in data do
             match renderResources.Value with
             | Some r ->
                 try
@@ -386,13 +400,26 @@ let newComponent (game : Game, description : Description, initialState, session,
 
                 try
                     r.spriteBatch.Begin()
-                    r.spriteBatch.DrawString(r.font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
-                    r.spriteBatch.DrawString(r.font, sprintf "%4.2f" (TypedVector.dot3(speed, heading) |> float32), Vector2(130.0f, 220.0f), Color.White)
                     let tsa = gdm.GraphicsDevice.Viewport.TitleSafeArea
                     r.spriteBatch.Draw(r.radar, Rectangle(tsa.Right - 200, tsa.Bottom - 200, 200, 200), new System.Nullable<_>(Rectangle(0, 0, Rendering.ShipRadar.width, Rendering.ShipRadar.height)), Color.White)
                 finally
                     r.spriteBatch.End()
+
             | _ -> ()
+
+        // Debug info, stats, log
+        match renderResources.Value with
+        | Some r ->
+            try
+                r.spriteBatch.Begin()
+                r.spriteBatch.DrawString(r.font, sprintf "%3.1f %%" (100.0 * computationTime.TotalSeconds / 0.016667), Vector2(100.0f, 100.0f), Color.White)
+                r.log.Render(r.spriteBatch, Color.White, 0.25f, 100.0f, 120.0f)
+                let tsa = gdm.GraphicsDevice.Viewport.TitleSafeArea
+                r.spriteBatch.Draw(r.radar, Rectangle(tsa.Right - 200, tsa.Bottom - 200, 200, 200), new System.Nullable<_>(Rectangle(0, 0, Rendering.ShipRadar.width, Rendering.ShipRadar.height)), Color.White)
+            finally
+                r.spriteBatch.End()
+
+        | None -> ()
 
 
     let comp = new ParallelUpdateDrawGameComponent<_, _, _>(game, (initialState, System.TimeSpan.FromTicks(0L)), initialize, update, compute, draw, disposeAll)
