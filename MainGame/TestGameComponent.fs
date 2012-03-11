@@ -341,7 +341,7 @@ let newComponent (game : Game, description : Description, initialState, session,
                         localTargetSpeeds = targetSpeeds }
                 ships = ships }
 
-        participants.Update(state.time)
+        participants.Update(state)
 
         state, watch.Elapsed
 

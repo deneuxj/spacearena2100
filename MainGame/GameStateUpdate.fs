@@ -25,8 +25,9 @@ type RemoteEvent =
     | BulletFired of int<BulletGuid> * int<GPI> * float32<m> * TypedVector3<m> * TypedVector3<m/s> // Bullet GUID, owner, radius, position, speed
     | SupplySpawned of int<GSI> * int<dms> * TypedVector3<m> * float32<m> * SupplyType // Supply idx, life length, position, radius, type
     | SupplyDisappeared of int<GSI> // Supply idx
-    | PlayerJoined of int<GPI> * int<LivePlayer> * string * ShipPosition // Ship idx, player name
+    | PlayerJoined of int<GPI> * int<LivePlayer> * string * ShipPosition // Ship idx, player name, position
     | PlayerLeft of int<GPI> // Ship idx
+    | AiPlayerJoined of int<GPI> * string * ShipPosition // Ship idx, name, position
 
 /// A synchronization event with the time at which it was sent.
 type TimedRemoteEvent =

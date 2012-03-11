@@ -443,9 +443,10 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
     let gamerJoinedSubscription = session.GamerJoined.Subscribe (fun (gamerJoined : GamerJoinedEventArgs) -> newGamers := gamerJoined.Gamer :: newGamers.Value)
     let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
 
-    member this.Update(time) : unit =
+    member this.Update(state : GameState.State) : unit =
         let isHost = isHost()
 
+        // Send all past "player joined" and "player left" messages to the new player.
         if isHost then
             for newPlayer in newGamers.Value do
                 let firstMessage = { time = 0<dms>; event = BuildAsteroids(seed, size) }
@@ -456,6 +457,37 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
                     writeTimedRemoteEvent packetWriter m
                     send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
+                // Also send current status of all ships...
+                for shipIdx in state.ships.accels.First .. 1<GPI> .. state.ships.accels.Last do
+                    let pos =
+                        { position = state.ships.posHost.[shipIdx]
+                          heading = state.ships.headings.[shipIdx]
+                          right = state.ships.rights.[shipIdx]
+                        }
+                    let m =
+                        { time = state.time
+                          event = ShipState(shipIdx, pos, state.ships.speeds.[shipIdx], state.ships.accels.[shipIdx]) 
+                        }
+                    writeTimedRemoteEvent packetWriter m
+                    send SendDataOptions.None session newPlayer packetWriter
+                
+                // ...  and supplies
+                for supIdx in state.supplies.pos.First .. 1<GSI> .. state.supplies.pos.Last do
+                    let e =
+                        match state.supplies.timeLeft.[supIdx] with
+                        | x when x > 0<dms> ->
+                            SupplySpawned(supIdx, x, state.supplies.pos.[supIdx], state.supplies.radii.[supIdx], state.supplies.types.[supIdx])
+                        | x ->
+                            SupplyDisappeared(supIdx)
+
+                    let m =
+                        { time = state.time
+                          event = e }
+
+                    writeTimedRemoteEvent packetWriter m
+                    send SendDataOptions.None session newPlayer packetWriter
+
+        // Send fresh "player joined" and "player left" messages to all players.
         let messages =
             let newGPIs =
                 newGamers.Value
@@ -483,12 +515,12 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
 
             let playerAddedMessages =
                 SeqUtil.listZip4 newGPIs liveIds newNames newShipPositions
-                |> List.map (fun data -> { time = time; event = PlayerJoined data })
+                |> List.map (fun data -> { time = state.time; event = PlayerJoined data })
 
             let playerRemovedMessages =
                 removedGamers.Value
                 |> Seq.choose (fun g -> mapping.Value.TryFind (1<LivePlayer> * int g.Id))
-                |> Seq.map (fun data -> { time = time; event = PlayerLeft data })
+                |> Seq.map (fun data -> { time = state.time; event = PlayerLeft data })
                 |> List.ofSeq
 
             playerAddedMessages @ playerRemovedMessages
@@ -507,8 +539,6 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
     member this.HasLocalPlayers =
         session.AllGamers
         |> Seq.exists (fun g -> g.IsLocal)
-
-    member this.AddAiPlayer() = failwith "TODO"
 
     member this.GlobalPlayerIndexOfLivePlayer id =
         mapping.Value.TryFind id
