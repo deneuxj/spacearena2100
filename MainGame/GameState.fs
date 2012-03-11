@@ -69,9 +69,12 @@ type Description =
 type Players =
     { numPlayers : int;      
       playerNames : MarkedArray<GPI, string>;
-      /// All local players, including humans and AIs
+      /// All local players, including humans and AIs.
       localPlayersIdxs : int<GPI> list;
+      /// All AIs this node is responsible for.
       localAiPlayerIdxs : int<GPI> list;
+      /// All AIs in the game.
+      allAiPlayerIdxs : int<GPI> list;
       shipTypes : MarkedArray<GPI, ShipType>;
       /// Players who left the game early.
       gonePlayerIdxs : int<GPI> list;
@@ -154,6 +157,7 @@ type AiState =
 type State =
     { players : Players;
       ships : Ships;
+      /// List of local ai players.
       ais : AiState list;
       bullets : Bullets;
       supplies : Supplies;      
@@ -166,6 +170,7 @@ let emptyState numSupplies =
           playerNames = MarkedArray [||]
           localPlayersIdxs = []
           localAiPlayerIdxs = []
+          allAiPlayerIdxs = []
           shipTypes = MarkedArray [||]
           gonePlayerIdxs = []
           numFastBullets = []

@@ -39,7 +39,8 @@ type RenderResources =
 let newComponent (game : Game, description : Description, initialState, session, seed, size, random) =
 
     let participants = new Network.Participants(session, seed, size, random)
-        
+    participants.AddAiPlayersIfHost()
+            
     let content = new Content.ContentManager(game.Services)
     let gdm =
         match game.Services.GetService(typeof<IGraphicsDeviceManager>) with
@@ -246,6 +247,7 @@ let newComponent (game : Game, description : Description, initialState, session,
                 | PlayerJoined _ | PlayerLeft _
                 | BulletFired _ | BulletDestroyed _
                 | SupplyDisappeared _ | SupplySpawned _ -> SendDataOptions.ReliableInOrder
+                | AiPlayerJoined _
                 | DamageAndImpulse _
                 | ShipDestroyed _ -> SendDataOptions.Reliable
                 | ShipState _ -> SendDataOptions.None
@@ -258,11 +260,17 @@ let newComponent (game : Game, description : Description, initialState, session,
             messages
             |> List.choose (function
                 | { event = PlayerJoined(idx, live, name, pos) } ->
-                    Some (idx, live, name, pos)
+                    Some (idx, Some live, name, pos)
+                | { event = AiPlayerJoined(idx, name, pos) } ->
+                    Some (idx, None, name, pos)
                 | _ -> None)
 
         for gpi, id, name, _ in newPlayers do
-            participants.SetGlobalPlayerIndexOfLivePlayer(id, gpi)
+            match id with
+            | Some id ->
+                participants.SetGlobalPlayerIndexOfLivePlayer(id, gpi)
+            | None ->
+                ()
             match renderResources.Value with
             | Some { log = log } -> log.AddMessage(TextIcons.String(sprintf "%s joined" name, TextIcons.Nil))
             | None -> ()
@@ -270,18 +278,21 @@ let newComponent (game : Game, description : Description, initialState, session,
         let localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds =
             newPlayers
             |> List.fold (fun ((localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds) as lists) (idx, live, _, _) ->
-                if session.AllGamers
-                   |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
-                    idx :: localPlayers,
-                    0 :: numFastBullets,
-                    0 :: numBigBullets,
-                    0 :: numHighRate,
-                    0 :: numMultiFire,
-                    0<dms> :: timeBeforeFire,
-                    -1<dms> :: timeBeforeRespawn,
-                    0.0f<m/s> :: targetSpeeds
-                else
-                    lists)
+                match live with
+                | Some live ->
+                    if session.AllGamers
+                       |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
+                        idx :: localPlayers,
+                        0 :: numFastBullets,
+                        0 :: numBigBullets,
+                        0 :: numHighRate,
+                        0 :: numMultiFire,
+                        0<dms> :: timeBeforeFire,
+                        -1<dms> :: timeBeforeRespawn,
+                        0.0f<m/s> :: targetSpeeds
+                    else
+                        lists
+                | None -> lists)
                 (state.players.localPlayersIdxs,
                  state.players.numFastBullets,
                  state.players.numBigBullets,
@@ -341,7 +352,7 @@ let newComponent (game : Game, description : Description, initialState, session,
                         localTargetSpeeds = targetSpeeds }
                 ships = ships }
 
-        participants.Update(state)
+        let state = participants.Update(state)
 
         state, watch.Elapsed
 

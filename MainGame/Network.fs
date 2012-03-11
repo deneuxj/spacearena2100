@@ -150,6 +150,11 @@ let writeRemoteEvent (writer : PacketWriter) ev =
         writer.Write(9uy)
         writer.Write(seed)
         writeTypedFloat writer size
+    | AiPlayerJoined(idx, name, pos) ->
+        writer.Write(10uy)
+        writeTypedInt writer idx
+        writer.Write(name)
+        writePosition writer pos
 
 
 let writeTimedRemoteEvent (writer : PacketWriter) ev =
@@ -207,6 +212,11 @@ let readRemoteEvent (reader : PacketReader) =
         let seed = reader.ReadInt32()
         let size = readTypedFloat reader
         BuildAsteroids(seed, size)
+    | 10uy ->
+        let idx = readTypedInt reader
+        let name = reader.ReadString()
+        let pos = readPosition reader
+        AiPlayerJoined(idx, name, pos)
     | unexpected ->
         failwithf "Unexpected value %d for RemoteEvent" (int unexpected)
 
@@ -418,7 +428,7 @@ let start sys sessionType =
                                 () // Some game state update messages may manage to reach us before we are ready. Ignore them.
                                 
                         do! sys.WaitNextFrame()
-                    let (Some(seed, size)) = seedAndSize.Value
+                    let seed, size = seedAndSize.Value.Value
                     let random = new System.Random(seed)
                     let description = newDescription(random, size)
                     return seed, size, random, description
@@ -443,16 +453,63 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
     let gamerJoinedSubscription = session.GamerJoined.Subscribe (fun (gamerJoined : GamerJoinedEventArgs) -> newGamers := gamerJoined.Gamer :: newGamers.Value)
     let gamerLeftSubscription= session.GamerLeft.Subscribe (fun (gamerLeft : GamerLeftEventArgs) -> removedGamers := gamerLeft.Gamer :: removedGamers.Value)
 
-    member this.Update(state : GameState.State) : unit =
+    member this.AddAiPlayersIfHost() : unit =
+        if isHost() then
+            let numAis = 5
+            let newGPIs = List.init numAis (fun i -> 1<GPI> * (numPlayers.Value + i))
+
+            let newShipPositions =
+                newGPIs
+                |> List.map (fun _ ->
+                    let pos = TypedVector3<m>(random.NextVector3(100.0f))
+                    let orientation = random.NextQuaternion()
+                    let heading = TypedVector3<1>(Vector3.Transform(Vector3.UnitY, orientation))
+                    let right = TypedVector3<1>(Vector3.Transform(Vector3.UnitX, orientation))
+                    { position = pos
+                      heading = heading
+                      right = right })
+
+            let newNames =
+                newGPIs
+                |> List.mapi (fun i _ -> sprintf "HAL%d" (9000 + i))
+
+            List.zip3 newGPIs newNames newShipPositions
+            |> List.iter(fun data->
+                let m = {
+                    time = 0<dms>
+                    event = AiPlayerJoined(data)
+                }
+                writeTimedRemoteEvent packetWriter m
+                broadcast SendDataOptions.Reliable session packetWriter
+                )
+        else
+            ()
+
+    member this.Update(state : State) : State =
         let isHost = isHost()
 
-        // Send all past "player joined" and "player left" messages to the new player.
         if isHost then
             for newPlayer in newGamers.Value do
+                // Send the asteroid field.
                 let firstMessage = { time = 0<dms>; event = BuildAsteroids(seed, size) }
                 writeTimedRemoteEvent packetWriter firstMessage
                 send SendDataOptions.ReliableInOrder session newPlayer packetWriter
 
+                // Send all AIs
+                for shipIdx in state.players.allAiPlayerIdxs do
+                    let pos =
+                        { position = state.ships.posHost.[shipIdx]
+                          heading = state.ships.headings.[shipIdx]
+                          right = state.ships.rights.[shipIdx]
+                        }
+                    let m =
+                        { time = state.time
+                          event = AiPlayerJoined(shipIdx, state.players.playerNames.[shipIdx], pos)
+                        }
+                    writeTimedRemoteEvent packetWriter m
+                    send SendDataOptions.None session newPlayer packetWriter
+
+                // Send all past "player joined" and "player left" messages to the new player.
                 for m in allMessages.Value do
                     writeTimedRemoteEvent packetWriter m
                     send SendDataOptions.ReliableInOrder session newPlayer packetWriter
@@ -471,7 +528,7 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
                     writeTimedRemoteEvent packetWriter m
                     send SendDataOptions.None session newPlayer packetWriter
                 
-                // ...  and supplies
+                // ... and supplies
                 for supIdx in state.supplies.pos.First .. 1<GSI> .. state.supplies.pos.Last do
                     let e =
                         match state.supplies.timeLeft.[supIdx] with
@@ -535,6 +592,15 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
         removedGamers := []
         allMessages := messages @ allMessages.Value
 
+        if isHost && state.players.localAiPlayerIdxs = [] then
+            { state with
+                players = { state.players with localAiPlayerIdxs = state.players.allAiPlayerIdxs }
+                ais =
+                    state.players.allAiPlayerIdxs
+                    |> List.map (fun _ -> Undecided)
+            }
+        else
+            state
 
     member this.HasLocalPlayers =
         session.AllGamers
