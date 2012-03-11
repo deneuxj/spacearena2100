@@ -482,6 +482,8 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
                 writeTimedRemoteEvent packetWriter m
                 broadcast SendDataOptions.Reliable session packetWriter
                 )
+
+            numPlayers := numPlayers.Value + numAis
         else
             ()
 
@@ -593,8 +595,12 @@ type Participants(session : NetworkSession, seed, size, random : System.Random) 
         allMessages := messages @ allMessages.Value
 
         if isHost && state.players.localAiPlayerIdxs = [] then
+            let players =
+                state.players.allAiPlayerIdxs
+                |> addLocalPlayers state.players
+
             { state with
-                players = { state.players with localAiPlayerIdxs = state.players.allAiPlayerIdxs }
+                players = { players with localAiPlayerIdxs = state.players.allAiPlayerIdxs }
                 ais =
                     state.players.allAiPlayerIdxs
                     |> List.map (fun _ -> Undecided)

@@ -119,12 +119,16 @@ let newComponent (game : Game, description : Description, initialState, session,
                         Some idx :: work idxs players
             work [PlayerIndex.One; PlayerIndex.Two; PlayerIndex.Three; PlayerIndex.Four] state.players.localPlayersIdxs
 
-        let settings =
+        let humanPlayerIndices =
             playerIndices
+            |> List.choose id
+
+        let settings =
+            humanPlayerIndices
             |> List.map (fun _ -> ShipControl.defaultSettings)
 
         let humanControls =
-            ShipControl.getAllControls settings playerIndices
+            ShipControl.getAllControls settings humanPlayerIndices
 
         let messages =
             let reader = new PacketReader()
@@ -194,19 +198,23 @@ let newComponent (game : Game, description : Description, initialState, session,
             |> List.map (fun (idxAi, ai) -> AiSteering.updateAi (getBulletSpeed state.players) dt state ai idxAi)
             |> List.unzip
 
-        let rec work humanControls aiControls humanPlayers aiPlayers =
-            match humanControls, aiControls, humanPlayers, aiPlayers with
-            | [], _, _, _ -> aiControls
-            | _, [], _, _ -> humanControls
-            | hc :: restHC, aic :: restAIC, hidx :: restHIDX, aiidx :: restAIIDX ->
-                if hidx = aiidx then
-                    aic :: work restHC restAIC restHIDX restAIIDX
+        let isAiPlayer player =
+            state.players.localAiPlayerIdxs
+            |> Seq.exists ((=) player)
+
+        let rec work humanControls aiControls players =
+            match humanControls, aiControls, players with
+            | [], _, _ -> aiControls
+            | _, [], _ -> humanControls
+            | hc :: restHC, aic :: restAIC, shipIdx :: restSIDX->
+                if isAiPlayer shipIdx then
+                    aic :: work humanControls restAIC restSIDX
                 else
-                    hc :: work restHC aiControls restHIDX aiPlayers
+                    hc :: work restHC aiControls restSIDX
             | _ -> failwith "Missing data"
 
-        let controls = //humanControls
-            work humanControls aiControls state.players.localPlayersIdxs state.players.localAiPlayerIdxs
+        let controls =
+            work humanControls aiControls state.players.localPlayersIdxs
 
         // Firing
         let players, newBullets, bulletCount =
@@ -265,6 +273,14 @@ let newComponent (game : Game, description : Description, initialState, session,
                     Some (idx, None, name, pos)
                 | _ -> None)
 
+        let allAiPlayers =
+            messages
+            |> List.choose (function
+                | { event = AiPlayerJoined(idx, _, _) } ->
+                    Some idx
+                | _ -> None)
+            |> List.append state.players.allAiPlayerIdxs
+
         for gpi, id, name, _ in newPlayers do
             match id with
             | Some id ->
@@ -275,36 +291,19 @@ let newComponent (game : Game, description : Description, initialState, session,
             | Some { log = log } -> log.AddMessage(TextIcons.String(sprintf "%s joined" name, TextIcons.Nil))
             | None -> ()
 
-        let localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds =
+        let players =
             newPlayers
-            |> List.fold (fun ((localPlayers, numFastBullets, numBigBullets, numHighRate, numMultiFire, timeBeforeFire, timeBeforeRespawn, targetSpeeds) as lists) (idx, live, _, _) ->
+            |> List.choose (fun (idx, live, _, _) ->
                 match live with
-                | Some live ->
-                    if session.AllGamers
-                       |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) then
-                        idx :: localPlayers,
-                        0 :: numFastBullets,
-                        0 :: numBigBullets,
-                        0 :: numHighRate,
-                        0 :: numMultiFire,
-                        0<dms> :: timeBeforeFire,
-                        -1<dms> :: timeBeforeRespawn,
-                        0.0f<m/s> :: targetSpeeds
-                    else
-                        lists
-                | None -> lists)
-                (state.players.localPlayersIdxs,
-                 state.players.numFastBullets,
-                 state.players.numBigBullets,
-                 state.players.numHighRate,
-                 state.players.numMultiFire,
-                 state.players.timeBeforeFire,
-                 state.players.timeBeforeRespawn,
-                 state.players.localTargetSpeeds)
+                | Some live when session.AllGamers |> Seq.exists (fun gamer -> 1<LivePlayer> * int gamer.Id = live && gamer.IsLocal) ->
+                    Some idx
+                | Some _
+                | None -> None)
+            |> addLocalPlayers state.players
 
         let players =
             newPlayers            
-            |> Seq.fold (fun players (idx, _, name, pos) -> addPlayer idx name players) state.players
+            |> Seq.fold (fun players (idx, _, name, pos) -> addPlayer idx name players) players
 
         // Mark those that have been removed.
         let players =
@@ -342,14 +341,7 @@ let newComponent (game : Game, description : Description, initialState, session,
             { state with
                 players =
                     { players with
-                        localPlayersIdxs = localPlayers
-                        numFastBullets = numFastBullets
-                        numBigBullets = numBigBullets
-                        numHighRate = numHighRate
-                        numMultiFire = numMultiFire
-                        timeBeforeFire = timeBeforeFire
-                        timeBeforeRespawn = timeBeforeRespawn 
-                        localTargetSpeeds = targetSpeeds }
+                        allAiPlayerIdxs = allAiPlayers }
                 ships = ships }
 
         let state = participants.Update(state)

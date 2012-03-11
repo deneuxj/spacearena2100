@@ -500,6 +500,23 @@ let addNewShip (position : ShipPosition) ships =
     }
 
 
+let addLocalPlayers players newPlayers =
+    let players =
+        newPlayers
+        |> List.fold (fun players idx ->
+            { players with
+                localPlayersIdxs = idx :: players.localPlayersIdxs
+                numFastBullets = 0 :: players.numFastBullets
+                numBigBullets = 0 :: players.numBigBullets
+                numHighRate = 0 :: players.numHighRate
+                numMultiFire = 0 :: players.numMultiFire
+                timeBeforeFire = 0<dms> :: players.timeBeforeFire
+                timeBeforeRespawn = -1<dms> :: players.timeBeforeRespawn
+                localTargetSpeeds = 0.0f<m/s> :: players.localTargetSpeeds })
+            players
+    players
+
+
 let updateSupplies (dt : int<dms>) (now : int<dms>) (events : TimedRemoteEvent[]) supplies =
     for e in events do
         match e with
